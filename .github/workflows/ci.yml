@@ -23,7 +23,7 @@ jobs:
           workspaces: ./src-tauri -> target
 
       - name: Fetch bundled adb sidecar
-        run: ./scripts/fetch-adb.sh
+        run: bash scripts/fetch-adb.sh
 
       - run: npm ci
 
