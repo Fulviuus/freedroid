@@ -4,9 +4,11 @@
 //! its output is piped (as it is here) it stays silent until the final summary.
 //! So instead of scraping adb's output we measure progress directly: poll the
 //! growing destination file's size against the known source size.
-//!  * pull  -> stat the local destination file (free, no adb).
-//!  * push  -> `adb shell stat -c %s` the remote destination (lightweight; runs
-//!             fine concurrently with the push on adb's multiplexed server).
+//!
+//! - pull: stat the local destination file (free, no adb).
+//! - push: `adb shell stat -c %s` the remote destination (lightweight; runs fine
+//!   concurrently with the push on adb's multiplexed server).
+//!
 //! Directories (and zero-byte / unknown-size sources) report as indeterminate.
 
 use crate::adb::{run_on, shell_quote, validate_device_path};
@@ -50,6 +52,7 @@ fn join(dir: &str, name: &str) -> String {
 }
 
 /// Pull a file/dir from the device into the local destination directory.
+#[allow(clippy::too_many_arguments)]
 pub async fn pull(
     app: &AppHandle,
     serial: &str,
@@ -79,6 +82,7 @@ pub async fn pull(
 }
 
 /// Push a local file/dir to the device destination directory.
+#[allow(clippy::too_many_arguments)]
 pub async fn push(
     app: &AppHandle,
     serial: &str,

@@ -15,9 +15,6 @@ pub enum Error {
 
     #[error("shell error: {0}")]
     Shell(#[from] tauri_plugin_shell::Error),
-
-    #[error("{0}")]
-    Other(String),
 }
 
 impl Serialize for Error {

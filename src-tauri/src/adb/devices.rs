@@ -19,6 +19,7 @@ pub struct Device {
 }
 
 impl Device {
+    #[allow(dead_code)] // used in tests; the frontend formats names itself
     pub fn display_name(&self) -> String {
         self.model
             .clone()

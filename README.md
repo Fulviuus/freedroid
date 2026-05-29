@@ -44,11 +44,35 @@ npm install
 npm run tauri dev
 ```
 
-Build a release bundle:
+Build a release bundle (produces `.app` + `.dmg`):
 
 ```bash
 npm run tauri build
+# universal (Apple Silicon + Intel):
+npm run tauri build -- --target universal-apple-darwin
 ```
+
+## Releases & code signing
+
+Pushing a `v*` tag triggers [`.github/workflows/release.yml`](.github/workflows/release.yml),
+which builds a universal macOS DMG and attaches it to a draft GitHub Release.
+
+By default the build is **unsigned** — it works, but macOS Gatekeeper shows an
+"unidentified developer" warning and users must right-click → Open the first time.
+To produce a **signed + notarized** build that opens cleanly, add these repository
+secrets (requires a paid Apple Developer account):
+
+| Secret | What it is |
+| --- | --- |
+| `APPLE_CERTIFICATE` | base64 of your "Developer ID Application" `.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | password for that `.p12` |
+| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
+| `APPLE_ID` | your Apple ID email |
+| `APPLE_PASSWORD` | an app-specific password for notarization |
+| `APPLE_TEAM_ID` | your 10-character Team ID |
+
+The workflow passes these through to `tauri-action`, which signs and notarizes
+automatically when they're present.
 
 ### Project layout
 

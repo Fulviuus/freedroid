@@ -37,6 +37,7 @@ pub async fn device_rename(app: AppHandle, serial: String, from: String, to: Str
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn pull_file(
     app: AppHandle,
     serial: String,
@@ -51,6 +52,7 @@ pub async fn pull_file(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn push_file(
     app: AppHandle,
     serial: String,
