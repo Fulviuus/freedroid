@@ -18,8 +18,7 @@ discontinued Android File Transfer.
   (Android 11+ wireless debugging).
 - 📂 **File operations** — create folders, rename, delete on the device.
 - 📊 **Live transfer progress** with a transfer queue.
-- 🗂️ **(In progress) Mount in Finder** — expose the device as a disk via FUSE.
-- 🆓 **MIT-licensed**, no telemetry, no account.
+- 🆓 **MIT-licensed**, no telemetry, no account, **nothing extra to install**.
 
 ## How it works
 
@@ -62,7 +61,6 @@ src-tauri/src/
   adb/                adb wrapper: devices, files, transfer, wifi
   local.rs            local (Mac) filesystem listing
   commands.rs         #[tauri::command] surface
-  fuse/               (M6) FUSE filesystem for Finder mounting
 ```
 
 ## Roadmap
@@ -74,8 +72,13 @@ src-tauri/src/
 - [x] Wi-Fi mode (tcpip + wireless pairing)
 - [ ] Drag-and-drop between panes and from Finder
 - [ ] Folder (recursive) transfers in the queue UI
-- [ ] Mount device in Finder via `fuse-t`
 - [ ] Code signing & notarization
+
+> **Not planned:** "Mount as a disk in Finder." On macOS that requires a
+> privileged filesystem driver (macFUSE/fuse-t) or a signed FSKit/File-Provider
+> extension — all of which mean an extra system install or a paid Apple Developer
+> account. Freedroid intentionally stays install-free; the dual-pane manager
+> covers the same use cases.
 
 ## License
 

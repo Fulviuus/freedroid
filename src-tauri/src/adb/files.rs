@@ -77,23 +77,6 @@ fn parse_stat_lines(out: &str) -> Vec<DirEntry> {
     entries
 }
 
-/// Pull a remote file to a local path without emitting UI progress events.
-/// Used by the FUSE layer to populate its content cache.
-#[cfg_attr(not(feature = "fuse"), allow(dead_code))]
-pub async fn pull_to(app: &AppHandle, serial: &str, remote: &str, local: &str) -> Result<()> {
-    validate_device_path(remote)?;
-    run_on(app, serial, &["pull", "-a", remote, local]).await?;
-    Ok(())
-}
-
-/// Push a local file to a remote path without emitting UI progress events.
-#[cfg_attr(not(feature = "fuse"), allow(dead_code))]
-pub async fn push_from(app: &AppHandle, serial: &str, local: &str, remote: &str) -> Result<()> {
-    validate_device_path(remote)?;
-    run_on(app, serial, &["push", local, remote]).await?;
-    Ok(())
-}
-
 pub async fn make_dir(app: &AppHandle, serial: &str, path: &str) -> Result<()> {
     validate_device_path(path)?;
     let cmd = format!("mkdir -p {}", shell_quote(path));

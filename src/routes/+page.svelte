@@ -28,32 +28,6 @@
 
   let showWifi = $state(false);
 
-  // ----- Finder mount (FUSE) -----
-  let fuseOk = $state(false);
-  let mountpoint = $state<string | null>(null);
-  let mounting = $state(false);
-
-  async function toggleMount() {
-    if (!app.selectedSerial || !app.ready) return;
-    mounting = true;
-    try {
-      if (mountpoint) {
-        await ipc.unmountDevice();
-        mountpoint = null;
-        app.notify("Device unmounted");
-      } else {
-        const name =
-          (app.selectedDevice?.model ?? app.selectedSerial).replace(/_/g, " ");
-        mountpoint = await ipc.mountDevice(app.selectedSerial, name, DEVICE_ROOT);
-        app.notify(`Mounted in Finder at ${mountpoint}`);
-      }
-    } catch (e) {
-      app.notify(String(e), "error");
-    } finally {
-      mounting = false;
-    }
-  }
-
   async function loadLocal() {
     localLoading = true;
     localError = null;
@@ -195,8 +169,6 @@
       app.adbVersion = await ipc.adbVersion().catch(() => "");
       localRoot = await ipc.localHome().catch(() => "/");
       localPath = localRoot;
-      fuseOk = await ipc.fuseAvailable().catch(() => false);
-      mountpoint = await ipc.currentMountpoint().catch(() => null);
       await app.refreshDevices();
     })();
 
@@ -222,20 +194,7 @@
       <span class="logo">🤖</span>
       <span class="title">Freedroid</span>
     </div>
-    <div class="head-right">
-      {#if fuseOk}
-        <button
-          class="mount-btn"
-          class:mounted={mountpoint}
-          disabled={!app.ready || mounting}
-          title={mountpoint ? `Mounted at ${mountpoint}` : "Mount device in Finder"}
-          onclick={toggleMount}
-        >
-          {mounting ? "…" : mountpoint ? "⏏ Unmount" : "🗂 Mount in Finder"}
-        </button>
-      {/if}
-      <DevicePicker onWifi={() => (showWifi = true)} />
-    </div>
+    <DevicePicker onWifi={() => (showWifi = true)} />
   </header>
 
   <main class="workspace">
@@ -332,33 +291,6 @@
     display: flex;
     align-items: center;
     gap: 8px;
-  }
-  .head-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .mount-btn {
-    border: 1px solid var(--border);
-    background: var(--pane-bg);
-    color: var(--text);
-    border-radius: 7px;
-    padding: 5px 10px;
-    font-size: 12px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .mount-btn:hover:not(:disabled) {
-    background: var(--hover);
-  }
-  .mount-btn.mounted {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
-  }
-  .mount-btn:disabled {
-    opacity: 0.4;
-    cursor: default;
   }
   .logo {
     font-size: 18px;
