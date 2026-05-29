@@ -17,6 +17,8 @@
     onDelete: () => void;
     onRename: (entry: FileEntry) => void;
     onActivate?: () => void; // double-click transfer of selection toward other pane
+    onDragOut?: () => void; // a row drag started from this pane
+    onDropIn?: () => void; // something was dropped onto this pane
     rootPath: string;
   }
 
@@ -35,8 +37,41 @@
     onDelete,
     onRename,
     onActivate,
+    onDragOut,
+    onDropIn,
     rootPath,
   }: Props = $props();
+
+  let dragOver = $state(false);
+
+  function rowDragStart(e: DragEvent, entry: FileEntry) {
+    // If dragging a row that isn't part of the selection, select just it.
+    if (!selected.has(entry.path)) {
+      selected.clear();
+      selected.add(entry.path);
+      selected = new Set(selected);
+    }
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "copy";
+      e.dataTransfer.setData("text/plain", entry.path);
+    }
+    onDragOut?.();
+  }
+
+  function paneDragOver(e: DragEvent) {
+    // Only react to internal app drags (OS file drops are handled by Tauri).
+    if (!onDropIn) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    dragOver = true;
+  }
+
+  function paneDrop(e: DragEvent) {
+    if (!onDropIn) return;
+    e.preventDefault();
+    dragOver = false;
+    onDropIn();
+  }
 
   // Breadcrumb segments relative to root.
   let crumbs = $derived.by(() => {
@@ -97,7 +132,15 @@
     {/each}
   </nav>
 
-  <div class="filelist" role="listbox" tabindex="0">
+  <div
+    class="filelist"
+    class:drag-over={dragOver}
+    role="listbox"
+    tabindex="0"
+    ondragover={paneDragOver}
+    ondragleave={() => (dragOver = false)}
+    ondrop={paneDrop}
+  >
     {#if loading}
       <div class="placeholder">Loading…</div>
     {:else if error}
@@ -117,6 +160,8 @@
           role="option"
           aria-selected={selected.has(entry.path)}
           tabindex="-1"
+          draggable="true"
+          ondragstart={(e) => rowDragStart(e, entry)}
           onclick={(e) => rowClick(e, entry)}
           ondblclick={() => rowDblClick(entry)}
         >
@@ -199,6 +244,10 @@
     flex: 1;
     overflow-y: auto;
     outline: none;
+  }
+  .filelist.drag-over {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
   }
   .placeholder {
     padding: 24px;

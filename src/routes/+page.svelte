@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { app } from "$lib/state.svelte";
   import * as ipc from "$lib/ipc";
   import type { FileEntry } from "$lib/ipc";
@@ -82,17 +83,16 @@
   }
 
   // ----- Transfers -----
+  // adb push/pull handle directories recursively. We pass the destination
+  // *directory* (not a full path) and let adb name the copy after the source,
+  // which works uniformly for both files and folders.
   async function pushSelected() {
     if (!app.selectedSerial) return;
-    const items = localEntries.filter((e) => localSelected.has(e.path) && !e.isDir);
-    const dirs = localEntries.filter((e) => localSelected.has(e.path) && e.isDir);
-    if (dirs.length)
-      app.notify("Folder transfer isn't supported yet — select files", "info");
+    const items = localEntries.filter((e) => localSelected.has(e.path));
     for (const entry of items) {
       const id = app.startTransfer(entry.name, "push");
-      const remote = joinPath(devicePath, entry.name);
       try {
-        await ipc.pushFile(app.selectedSerial, entry.path, remote, id, entry.name);
+        await ipc.pushFile(app.selectedSerial, entry.path, devicePath, id, entry.name);
       } catch (e) {
         app.finishTransfer(id, false, String(e));
       }
@@ -102,21 +102,40 @@
 
   async function pullSelected() {
     if (!app.selectedSerial) return;
-    const items = deviceEntries.filter((e) => deviceSelected.has(e.path) && !e.isDir);
-    const dirs = deviceEntries.filter((e) => deviceSelected.has(e.path) && e.isDir);
-    if (dirs.length)
-      app.notify("Folder transfer isn't supported yet — select files", "info");
+    const items = deviceEntries.filter((e) => deviceSelected.has(e.path));
     for (const entry of items) {
       const id = app.startTransfer(entry.name, "pull");
-      const local = joinPath(localPath, entry.name);
       try {
-        await ipc.pullFile(app.selectedSerial, entry.path, local, id, entry.name);
+        await ipc.pullFile(app.selectedSerial, entry.path, localPath, id, entry.name);
       } catch (e) {
         app.finishTransfer(id, false, String(e));
       }
     }
     loadLocal();
   }
+
+  // Push arbitrary local paths (e.g. files dropped from Finder) to the device.
+  async function pushPaths(paths: string[]) {
+    if (!app.selectedSerial || !app.ready) {
+      app.notify("Connect and authorize a device first", "error");
+      return;
+    }
+    for (const p of paths) {
+      const name = p.replace(/\/+$/, "").split("/").pop() ?? p;
+      const id = app.startTransfer(name, "push");
+      try {
+        await ipc.pushFile(app.selectedSerial, p, devicePath, id, name);
+      } catch (e) {
+        app.finishTransfer(id, false, String(e));
+      }
+    }
+    loadDevice();
+  }
+
+  // ----- Drag and drop between panes -----
+  let dragSource = $state<"local" | "device" | null>(null);
+  // True while files from Finder are being dragged over the device pane.
+  let externalDrag = $state(false);
 
   // ----- Device file ops -----
   async function newFolderDevice() {
@@ -179,6 +198,22 @@
       ipc.onTransferDone((d) =>
         app.finishTransfer(d.id, d.success, d.error ?? undefined),
       ),
+      // Files dropped from Finder. Tauri intercepts OS file drops, so they
+      // arrive here (not via HTML drop events). A drop over the right half of
+      // the window targets the device pane → push to the device.
+      getCurrentWebview().onDragDropEvent((event) => {
+        if (event.payload.type === "enter" || event.payload.type === "over") {
+          externalDrag = event.payload.position.x > window.innerWidth / 2;
+        } else if (event.payload.type === "leave") {
+          externalDrag = false;
+        } else if (event.payload.type === "drop") {
+          const overDevice = event.payload.position.x > window.innerWidth / 2;
+          externalDrag = false;
+          if (overDevice && event.payload.paths.length) {
+            pushPaths(event.payload.paths);
+          }
+        }
+      }),
     ];
 
     return () => {
@@ -214,6 +249,11 @@
       onDelete={() => {}}
       onRename={() => {}}
       onActivate={pushSelected}
+      onDragOut={() => (dragSource = "local")}
+      onDropIn={() => {
+        if (dragSource === "device") pullSelected();
+        dragSource = null;
+      }}
     />
 
     <div class="transfer-col">
@@ -249,8 +289,17 @@
       onDelete={deleteDevice}
       onRename={renameDevice}
       onActivate={pullSelected}
+      onDragOut={() => (dragSource = "device")}
+      onDropIn={() => {
+        if (dragSource === "local") pushSelected();
+        dragSource = null;
+      }}
     />
   </main>
+
+  {#if externalDrag}
+    <div class="ext-drop">Drop to copy to {app.selectedDevice ? (app.selectedDevice.model ?? "device").replace(/_/g, " ") : "device"}</div>
+  {/if}
 
   <TransferQueue />
 
@@ -359,5 +408,23 @@
   }
   .toast.error {
     background: #c0392b;
+  }
+  .ext-drop {
+    position: fixed;
+    top: 50%;
+    right: 24px;
+    transform: translateY(-50%);
+    width: calc(50% - 48px);
+    max-width: 480px;
+    padding: 28px;
+    border: 2px dashed var(--accent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) 12%, var(--pane-bg));
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    pointer-events: none;
+    z-index: 40;
   }
 </style>
