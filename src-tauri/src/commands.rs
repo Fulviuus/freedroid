@@ -44,8 +44,10 @@ pub async fn pull_file(
     local: String,
     id: String,
     name: String,
+    total: u64,
+    is_dir: bool,
 ) -> Result<()> {
-    adb::transfer::pull(&app, &serial, &remote, &local, &id, &name).await
+    adb::transfer::pull(&app, &serial, &remote, &local, &id, &name, total, is_dir).await
 }
 
 #[tauri::command]
@@ -56,8 +58,10 @@ pub async fn push_file(
     remote: String,
     id: String,
     name: String,
+    total: u64,
+    is_dir: bool,
 ) -> Result<()> {
-    adb::transfer::push(&app, &serial, &local, &remote, &id, &name).await
+    adb::transfer::push(&app, &serial, &local, &remote, &id, &name, total, is_dir).await
 }
 
 // ----- Local filesystem (Mac pane) -----

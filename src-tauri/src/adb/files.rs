@@ -25,7 +25,13 @@ pub struct DirEntry {
 /// contain `|`, so filenames containing `|` are still handled correctly.
 pub async fn list_dir(app: &AppHandle, serial: &str, path: &str) -> Result<Vec<DirEntry>> {
     validate_device_path(path)?;
-    let quoted = shell_quote(path);
+    // Append a trailing slash so `find` follows a symlinked start point. The
+    // storage root /sdcard is itself a symlink (-> /storage/self/primary), and
+    // without the slash `find` treats it as a file and lists nothing. A trailing
+    // slash is harmless on regular directories. `find` normalises the doubled
+    // slash, so the reported paths (and basenames) are unaffected.
+    let dir = format!("{}/", path.trim_end_matches('/'));
+    let quoted = shell_quote(&dir);
     let cmd = format!(
         "find {quoted} -maxdepth 1 -mindepth 1 -exec stat -c '%n|%s|%Y|%F' {{}} + 2>/dev/null"
     );

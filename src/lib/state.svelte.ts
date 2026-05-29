@@ -6,6 +6,7 @@ export interface Transfer {
   name: string;
   direction: "push" | "pull";
   percent: number;
+  indeterminate: boolean;
   status: "active" | "done" | "error";
   error?: string;
 }
@@ -53,15 +54,18 @@ class AppState {
   startTransfer(name: string, direction: "push" | "pull"): string {
     const id = uid();
     this.transfers = [
-      { id, name, direction, percent: 0, status: "active" },
+      { id, name, direction, percent: 0, indeterminate: false, status: "active" },
       ...this.transfers,
     ];
     return id;
   }
 
-  updateProgress(id: string, percent: number) {
+  updateProgress(id: string, percent: number, indeterminate: boolean) {
     const t = this.transfers.find((x) => x.id === id);
-    if (t) t.percent = percent;
+    if (t) {
+      t.percent = percent;
+      t.indeterminate = indeterminate;
+    }
   }
 
   finishTransfer(id: string, success: boolean, error?: string) {

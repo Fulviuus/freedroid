@@ -24,6 +24,7 @@ export interface TransferProgress {
   percent: number;
   direction: "push" | "pull";
   name: string;
+  indeterminate: boolean;
 }
 
 export interface TransferDone {
@@ -54,7 +55,9 @@ export const pullFile = (
   local: string,
   id: string,
   name: string,
-) => invoke<void>("pull_file", { serial, remote, local, id, name });
+  total: number,
+  isDir: boolean,
+) => invoke<void>("pull_file", { serial, remote, local, id, name, total, isDir });
 
 export const pushFile = (
   serial: string,
@@ -62,7 +65,9 @@ export const pushFile = (
   remote: string,
   id: string,
   name: string,
-) => invoke<void>("push_file", { serial, local, remote, id, name });
+  total: number,
+  isDir: boolean,
+) => invoke<void>("push_file", { serial, local, remote, id, name, total, isDir });
 
 export const listLocalDir = (path: string) =>
   invoke<FileEntry[]>("list_local_dir", { path });

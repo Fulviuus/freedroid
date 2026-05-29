@@ -1,20 +1,23 @@
 //! File transfers (push/pull) with live progress.
 //!
-//! adb prints per-file progress like `[ 45%] /sdcard/foo` while transferring.
-//! We spawn the sidecar, scan stdout/stderr for those markers, and emit a
-//! `transfer://progress` event the frontend listens on. A `transfer://done`
-//! event fires on completion (success or failure).
+//! adb only prints its `[ NN%]` progress bar to an interactive terminal; when
+//! its output is piped (as it is here) it stays silent until the final summary.
+//! So instead of scraping adb's output we measure progress directly: poll the
+//! growing destination file's size against the known source size.
+//!  * pull  -> stat the local destination file (free, no adb).
+//!  * push  -> `adb shell stat -c %s` the remote destination (lightweight; runs
+//!             fine concurrently with the push on adb's multiplexed server).
+//! Directories (and zero-byte / unknown-size sources) report as indeterminate.
 
-use crate::adb::validate_device_path;
+use crate::adb::{run_on, shell_quote, validate_device_path};
 use crate::error::{Error, Result};
-use once_cell::sync::Lazy;
-use regex::Regex;
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
-
-static PCT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\[\s*(\d+)%\]").unwrap());
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +26,8 @@ pub struct Progress {
     pub percent: u8,
     pub direction: String,
     pub name: String,
+    /// True when we can't compute a percentage (folders / unknown size).
+    pub indeterminate: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -33,30 +38,101 @@ pub struct Done {
     pub error: Option<String>,
 }
 
-/// Pull a file/dir from the device to the local filesystem.
+/// Where to look to measure how far a transfer has progressed.
+enum Probe {
+    Local(String),
+    Remote { serial: String, path: String },
+    None,
+}
+
+fn join(dir: &str, name: &str) -> String {
+    format!("{}/{}", dir.trim_end_matches('/'), name)
+}
+
+/// Pull a file/dir from the device into the local destination directory.
 pub async fn pull(
     app: &AppHandle,
     serial: &str,
     remote: &str,
-    local: &str,
+    local_dir: &str,
     id: &str,
     name: &str,
+    total: u64,
+    is_dir: bool,
 ) -> Result<()> {
     validate_device_path(remote)?;
-    run_transfer(app, id, name, "pull", &["-s", serial, "pull", "-a", remote, local]).await
+    let probe = if is_dir || total == 0 {
+        Probe::None
+    } else {
+        Probe::Local(join(local_dir, name))
+    };
+    run_transfer(
+        app,
+        id,
+        name,
+        "pull",
+        &["-s", serial, "pull", "-a", remote, local_dir],
+        probe,
+        total,
+    )
+    .await
 }
 
-/// Push a local file/dir to the device.
+/// Push a local file/dir to the device destination directory.
 pub async fn push(
     app: &AppHandle,
     serial: &str,
     local: &str,
-    remote: &str,
+    remote_dir: &str,
     id: &str,
     name: &str,
+    total: u64,
+    is_dir: bool,
 ) -> Result<()> {
-    validate_device_path(remote)?;
-    run_transfer(app, id, name, "push", &["-s", serial, "push", local, remote]).await
+    validate_device_path(remote_dir)?;
+    let probe = if is_dir || total == 0 {
+        Probe::None
+    } else {
+        Probe::Remote {
+            serial: serial.to_string(),
+            path: join(remote_dir, name),
+        }
+    };
+    run_transfer(
+        app,
+        id,
+        name,
+        "push",
+        &["-s", serial, "push", local, remote_dir],
+        probe,
+        total,
+    )
+    .await
+}
+
+async fn sample(app: &AppHandle, probe: &Probe) -> Option<u64> {
+    match probe {
+        Probe::Local(p) => std::fs::metadata(p).ok().map(|m| m.len()),
+        Probe::Remote { serial, path } => {
+            let cmd = format!("stat -c %s {} 2>/dev/null", shell_quote(path));
+            let out = run_on(app, serial, &["shell", &cmd]).await.ok()?;
+            out.trim().parse::<u64>().ok()
+        }
+        Probe::None => None,
+    }
+}
+
+fn emit_progress(app: &AppHandle, id: &str, name: &str, dir: &str, pct: u8, indeterminate: bool) {
+    let _ = app.emit(
+        "transfer://progress",
+        Progress {
+            id: id.to_string(),
+            percent: pct,
+            direction: dir.to_string(),
+            name: name.to_string(),
+            indeterminate,
+        },
+    );
 }
 
 async fn run_transfer(
@@ -65,56 +141,58 @@ async fn run_transfer(
     name: &str,
     direction: &str,
     args: &[&str],
+    probe: Probe,
+    total: u64,
 ) -> Result<()> {
     let cmd = app.shell().sidecar("adb")?;
     let (mut rx, _child) = cmd.args(args).spawn()?;
 
-    let mut last_pct: u8 = 0;
+    // Background sampler drives the percentage by watching the destination size.
+    let stop = Arc::new(AtomicBool::new(false));
+    let poll = if total > 0 && !matches!(probe, Probe::None) {
+        let app = app.clone();
+        let stop = stop.clone();
+        let id = id.to_string();
+        let name = name.to_string();
+        let direction = direction.to_string();
+        Some(tauri::async_runtime::spawn(async move {
+            let mut last = 0u8;
+            while !stop.load(Ordering::Relaxed) {
+                if let Some(sz) = sample(&app, &probe).await {
+                    let pct = (((sz.min(total) as f64) / total as f64) * 100.0) as u8;
+                    let pct = pct.min(99);
+                    if pct != last {
+                        last = pct;
+                        emit_progress(&app, &id, &name, &direction, pct, false);
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(400)).await;
+            }
+        }))
+    } else {
+        // No measurable size — tell the UI to show an indeterminate bar.
+        emit_progress(app, id, name, direction, 0, true);
+        None
+    };
+
     let mut stderr_buf = String::new();
     let mut exit_ok = false;
-
     while let Some(event) = rx.recv().await {
-        let (text, is_stderr) = match event {
-            CommandEvent::Stdout(bytes) => (String::from_utf8_lossy(&bytes).into_owned(), false),
-            CommandEvent::Stderr(bytes) => (String::from_utf8_lossy(&bytes).into_owned(), true),
-            CommandEvent::Terminated(payload) => {
-                exit_ok = payload.code == Some(0);
-                continue;
-            }
-            _ => continue,
-        };
-
-        if is_stderr {
-            stderr_buf.push_str(&text);
-        }
-        if let Some(c) = PCT_RE.captures_iter(&text).last() {
-            if let Ok(p) = c[1].parse::<u8>() {
-                if p != last_pct {
-                    last_pct = p;
-                    let _ = app.emit(
-                        "transfer://progress",
-                        Progress {
-                            id: id.to_string(),
-                            percent: p,
-                            direction: direction.to_string(),
-                            name: name.to_string(),
-                        },
-                    );
-                }
-            }
+        match event {
+            CommandEvent::Stderr(b) => stderr_buf.push_str(&String::from_utf8_lossy(&b)),
+            CommandEvent::Terminated(p) => exit_ok = p.code == Some(0),
+            _ => {}
         }
     }
 
+    // Stop the sampler before emitting the terminal state.
+    stop.store(true, Ordering::Relaxed);
+    if let Some(h) = poll {
+        h.abort();
+    }
+
     let result = if exit_ok {
-        let _ = app.emit(
-            "transfer://progress",
-            Progress {
-                id: id.to_string(),
-                percent: 100,
-                direction: direction.to_string(),
-                name: name.to_string(),
-            },
-        );
+        emit_progress(app, id, name, direction, 100, false);
         Ok(())
     } else {
         Err(Error::Adb(if stderr_buf.trim().is_empty() {

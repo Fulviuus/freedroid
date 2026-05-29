@@ -92,7 +92,15 @@
     for (const entry of items) {
       const id = app.startTransfer(entry.name, "push");
       try {
-        await ipc.pushFile(app.selectedSerial, entry.path, devicePath, id, entry.name);
+        await ipc.pushFile(
+          app.selectedSerial,
+          entry.path,
+          devicePath,
+          id,
+          entry.name,
+          entry.size,
+          entry.isDir,
+        );
       } catch (e) {
         app.finishTransfer(id, false, String(e));
       }
@@ -106,7 +114,15 @@
     for (const entry of items) {
       const id = app.startTransfer(entry.name, "pull");
       try {
-        await ipc.pullFile(app.selectedSerial, entry.path, localPath, id, entry.name);
+        await ipc.pullFile(
+          app.selectedSerial,
+          entry.path,
+          localPath,
+          id,
+          entry.name,
+          entry.size,
+          entry.isDir,
+        );
       } catch (e) {
         app.finishTransfer(id, false, String(e));
       }
@@ -124,7 +140,8 @@
       const name = p.replace(/\/+$/, "").split("/").pop() ?? p;
       const id = app.startTransfer(name, "push");
       try {
-        await ipc.pushFile(app.selectedSerial, p, devicePath, id, name);
+        // External drops: size/type unknown, so transfer shows as indeterminate.
+        await ipc.pushFile(app.selectedSerial, p, devicePath, id, name, 0, false);
       } catch (e) {
         app.finishTransfer(id, false, String(e));
       }
@@ -194,7 +211,9 @@
     const poll = setInterval(() => app.refreshDevices(), 3000);
 
     const unsubs: Array<Promise<() => void>> = [
-      ipc.onTransferProgress((p) => app.updateProgress(p.id, p.percent)),
+      ipc.onTransferProgress((p) =>
+        app.updateProgress(p.id, p.percent, p.indeterminate),
+      ),
       ipc.onTransferDone((d) =>
         app.finishTransfer(d.id, d.success, d.error ?? undefined),
       ),

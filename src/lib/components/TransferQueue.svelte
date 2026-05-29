@@ -21,13 +21,14 @@
                 class="fill"
                 class:error={t.status === "error"}
                 class:done={t.status === "done"}
-                style="width: {t.status === 'error' ? 100 : t.percent}%"
+                class:pulse={t.status === "active" && t.indeterminate}
+                style="width: {t.status === 'error' || (t.status === 'active' && t.indeterminate) ? 100 : t.percent}%"
               ></div>
             </div>
             {#if t.status === "error"}<div class="err">{t.error}</div>{/if}
           </div>
           <span class="pct">
-            {#if t.status === "error"}Failed{:else if t.status === "done"}Done{:else}{t.percent}%{/if}
+            {#if t.status === "error"}Failed{:else if t.status === "done"}Done{:else if t.indeterminate}…{:else}{t.percent}%{/if}
           </span>
         </div>
       {/each}
@@ -83,6 +84,21 @@
   .fill { height: 100%; background: var(--accent); transition: width 0.2s; }
   .fill.done { background: #34c759; }
   .fill.error { background: #ff453a; }
+  .fill.pulse {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--accent) 50%,
+      transparent 100%
+    );
+    background-size: 40% 100%;
+    background-repeat: no-repeat;
+    animation: slide 1.1s linear infinite;
+  }
+  @keyframes slide {
+    0% { background-position: -40% 0; }
+    100% { background-position: 140% 0; }
+  }
   .err { font-size: 11px; color: #ff453a; margin-top: 2px; }
   .pct {
     font-size: 11px;
