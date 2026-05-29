@@ -81,6 +81,16 @@ export const wifiDisconnect = (address: string) =>
 export const wifiPair = (address: string, code: string) =>
   invoke<string>("wifi_pair", { address, code });
 
+export const fuseAvailable = () => invoke<boolean>("fuse_available");
+
+export const mountDevice = (serial: string, deviceName: string, root: string) =>
+  invoke<string>("mount_device", { serial, deviceName, root });
+
+export const unmountDevice = () => invoke<void>("unmount_device");
+
+export const currentMountpoint = () =>
+  invoke<string | null>("current_mountpoint");
+
 export const onTransferProgress = (
   cb: (p: TransferProgress) => void,
 ): Promise<UnlistenFn> =>

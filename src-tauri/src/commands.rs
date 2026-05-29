@@ -2,8 +2,9 @@
 
 use crate::adb::{self, devices::Device, files::DirEntry, wifi};
 use crate::error::Result;
+use crate::fuse::{self, FuseState};
 use crate::local::{self, LocalEntry};
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub async fn adb_version(app: AppHandle) -> Result<String> {
@@ -92,4 +93,32 @@ pub async fn wifi_disconnect(app: AppHandle, address: String) -> Result<()> {
 #[tauri::command]
 pub async fn wifi_pair(app: AppHandle, address: String, code: String) -> Result<String> {
     wifi::pair(&app, &address, &code).await
+}
+
+// ----- Finder mount (FUSE) -----
+
+#[tauri::command]
+pub fn fuse_available() -> bool {
+    fuse::available()
+}
+
+#[tauri::command]
+pub fn mount_device(
+    app: AppHandle,
+    state: State<'_, FuseState>,
+    serial: String,
+    device_name: String,
+    root: String,
+) -> Result<String> {
+    fuse::mount(&app, &state, &serial, &device_name, &root)
+}
+
+#[tauri::command]
+pub fn unmount_device(state: State<'_, FuseState>) -> Result<()> {
+    fuse::unmount(&state)
+}
+
+#[tauri::command]
+pub fn current_mountpoint(state: State<'_, FuseState>) -> Option<String> {
+    fuse::mountpoint(&state)
 }

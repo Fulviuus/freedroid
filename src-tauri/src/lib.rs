@@ -1,9 +1,10 @@
 mod adb;
 mod commands;
 mod error;
+mod fuse;
 mod local;
 
-use tauri::{RunEvent, WindowEvent};
+use tauri::{Manager, RunEvent, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,6 +13,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .manage(fuse::FuseState::default())
         .invoke_handler(tauri::generate_handler![
             commands::adb_version,
             commands::list_devices,
@@ -27,6 +29,10 @@ pub fn run() {
             commands::wifi_connect,
             commands::wifi_disconnect,
             commands::wifi_pair,
+            commands::fuse_available,
+            commands::mount_device,
+            commands::unmount_device,
+            commands::current_mountpoint,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -38,6 +44,7 @@ pub fn run() {
                 ..
             } = event
             {
+                let _ = fuse::unmount(&app.state::<fuse::FuseState>());
                 let app = app.clone();
                 tauri::async_runtime::block_on(async move {
                     adb::kill_server(&app).await;
