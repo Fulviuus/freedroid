@@ -14,10 +14,14 @@ curl -fSL "$URL" -o "$TMP/pt.zip"
 unzip -q "$TMP/pt.zip" -d "$TMP"
 
 # adb from platform-tools is a universal (arm64 + x86_64) binary, so the same
-# file serves both target triples.
-cp "$TMP/platform-tools/adb" "$DEST/adb-aarch64-apple-darwin"
-cp "$TMP/platform-tools/adb" "$DEST/adb-x86_64-apple-darwin"
+# file serves every target triple. The `universal-apple-darwin` name is what the
+# bundler looks for when building `--target universal-apple-darwin`.
+for triple in aarch64-apple-darwin x86_64-apple-darwin universal-apple-darwin; do
+  cp "$TMP/platform-tools/adb" "$DEST/adb-$triple"
+done
 chmod +x "$DEST"/adb-*
+
+lipo -info "$DEST/adb-universal-apple-darwin" 2>/dev/null || true
 
 rm -rf "$TMP"
 echo "adb sidecars written to $DEST"
