@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { app } from "$lib/state.svelte";
   import * as ipc from "$lib/ipc";
   import type { FileEntry } from "$lib/ipc";
@@ -130,29 +129,8 @@
     loadLocal();
   }
 
-  // Push arbitrary local paths (e.g. files dropped from Finder) to the device.
-  async function pushPaths(paths: string[]) {
-    if (!app.selectedSerial || !app.ready) {
-      app.notify("Connect and authorize a device first", "error");
-      return;
-    }
-    for (const p of paths) {
-      const name = p.replace(/\/+$/, "").split("/").pop() ?? p;
-      const id = app.startTransfer(name, "push");
-      try {
-        // External drops: size/type unknown, so transfer shows as indeterminate.
-        await ipc.pushFile(app.selectedSerial, p, devicePath, id, name, 0, false);
-      } catch (e) {
-        app.finishTransfer(id, false, String(e));
-      }
-    }
-    loadDevice();
-  }
-
   // ----- Drag and drop between panes -----
   let dragSource = $state<"local" | "device" | null>(null);
-  // True while files from Finder are being dragged over the device pane.
-  let externalDrag = $state(false);
 
   // ----- Device file ops -----
   async function newFolderDevice() {
@@ -217,22 +195,6 @@
       ipc.onTransferDone((d) =>
         app.finishTransfer(d.id, d.success, d.error ?? undefined),
       ),
-      // Files dropped from Finder. Tauri intercepts OS file drops, so they
-      // arrive here (not via HTML drop events). A drop over the right half of
-      // the window targets the device pane → push to the device.
-      getCurrentWebview().onDragDropEvent((event) => {
-        if (event.payload.type === "enter" || event.payload.type === "over") {
-          externalDrag = event.payload.position.x > window.innerWidth / 2;
-        } else if (event.payload.type === "leave") {
-          externalDrag = false;
-        } else if (event.payload.type === "drop") {
-          const overDevice = event.payload.position.x > window.innerWidth / 2;
-          externalDrag = false;
-          if (overDevice && event.payload.paths.length) {
-            pushPaths(event.payload.paths);
-          }
-        }
-      }),
     ];
 
     return () => {
@@ -315,10 +277,6 @@
       }}
     />
   </main>
-
-  {#if externalDrag}
-    <div class="ext-drop">Drop to copy to {app.selectedDevice ? (app.selectedDevice.model ?? "device").replace(/_/g, " ") : "device"}</div>
-  {/if}
 
   <TransferQueue />
 
@@ -427,23 +385,5 @@
   }
   .toast.error {
     background: #c0392b;
-  }
-  .ext-drop {
-    position: fixed;
-    top: 50%;
-    right: 24px;
-    transform: translateY(-50%);
-    width: calc(50% - 48px);
-    max-width: 480px;
-    padding: 28px;
-    border: 2px dashed var(--accent);
-    border-radius: 12px;
-    background: color-mix(in srgb, var(--accent) 12%, var(--pane-bg));
-    color: var(--text);
-    font-size: 14px;
-    font-weight: 600;
-    text-align: center;
-    pointer-events: none;
-    z-index: 40;
   }
 </style>

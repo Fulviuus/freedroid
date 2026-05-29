@@ -70,9 +70,14 @@ src-tauri/src/
 - [x] Push / pull with live progress
 - [x] Device file ops (mkdir / rename / delete)
 - [x] Wi-Fi mode (tcpip + wireless pairing)
-- [ ] Drag-and-drop between panes and from Finder
-- [ ] Folder (recursive) transfers in the queue UI
+- [x] Drag-and-drop between the panes
+- [x] Folder (recursive) transfers
 - [ ] Code signing & notarization
+
+> Note: dragging files *in from Finder* isn't supported — macOS WebViews can't
+> expose dropped files' real paths to HTML5 drag-and-drop, and Tauri's native
+> drop handler is mutually exclusive with the in-app pane-to-pane dragging we use.
+> Use the **→ / ←** buttons or pane-to-pane drag instead.
 
 > **Not planned:** "Mount as a disk in Finder." On macOS that requires a
 > privileged filesystem driver (macFUSE/fuse-t) or a signed FSKit/File-Provider

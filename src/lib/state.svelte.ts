@@ -35,7 +35,15 @@ class AppState {
 
   async refreshDevices() {
     try {
-      this.devices = await ipc.listDevices();
+      const next = await ipc.listDevices();
+      // Only reassign when something actually changed. The poll runs every few
+      // seconds; reassigning an identical list would retrigger every effect that
+      // reads device state and make the device pane reload (flicker) on each tick.
+      const sig = (ds: ipc.Device[]) =>
+        ds.map((d) => `${d.serial}:${d.state}:${d.model ?? ""}`).join("|");
+      if (sig(next) !== sig(this.devices)) {
+        this.devices = next;
+      }
       // Auto-select first ready device if nothing selected (or selection gone).
       if (
         !this.selectedSerial ||
