@@ -83,6 +83,39 @@ fn parse_stat_lines(out: &str) -> Vec<DirEntry> {
     entries
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Volume {
+    pub label: String,
+    pub path: String,
+}
+
+/// List the device's user-accessible storage volumes: internal storage plus any
+/// SD card / USB volumes mounted under /storage.
+pub async fn list_volumes(app: &AppHandle, serial: &str) -> Result<Vec<Volume>> {
+    let mut vols = vec![Volume {
+        label: "Internal storage".into(),
+        path: "/sdcard".into(),
+    }];
+    let out = run_on(app, serial, &["shell", "ls /storage 2>/dev/null"])
+        .await
+        .unwrap_or_default();
+    for name in out.split_whitespace() {
+        if name.is_empty() || name == "emulated" || name == "self" {
+            continue;
+        }
+        // Volume ids look like "ABCD-1234"; show those as an SD card.
+        let is_uuid = name.len() == 9
+            && name.as_bytes()[4] == b'-'
+            && name.chars().enumerate().all(|(i, c)| i == 4 || c.is_ascii_hexdigit());
+        vols.push(Volume {
+            label: if is_uuid { "SD card".into() } else { name.to_string() },
+            path: format!("/storage/{name}"),
+        });
+    }
+    Ok(vols)
+}
+
 pub async fn make_dir(app: &AppHandle, serial: &str, path: &str) -> Result<()> {
     validate_device_path(path)?;
     let cmd = format!("mkdir -p {}", shell_quote(path));

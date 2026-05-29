@@ -20,11 +20,23 @@
   let localSelected = $state<Set<string>>(new Set());
 
   // ----- Device (Android) pane state -----
+  let deviceRoot = $state(DEVICE_ROOT);
+  let deviceRootLabel = $state("Internal storage");
+  let deviceVolumes = $state<ipc.Volume[]>([]);
   let devicePath = $state(DEVICE_ROOT);
   let deviceEntries = $state<FileEntry[]>([]);
   let deviceLoading = $state(false);
   let deviceError = $state<string | null>(null);
   let deviceSelected = $state<Set<string>>(new Set());
+
+  function switchVolume(path: string) {
+    const vol = deviceVolumes.find((v) => v.path === path);
+    if (!vol) return;
+    deviceRoot = vol.path;
+    deviceRootLabel = vol.label;
+    deviceSelected = new Set();
+    devicePath = vol.path;
+  }
 
   let showWifi = $state(false);
 
@@ -70,6 +82,23 @@
     app.selectedSerial;
     app.ready;
     loadDevice();
+  });
+
+  // Load the device's storage volumes (internal + SD card) when it's ready.
+  $effect(() => {
+    const serial = app.selectedSerial;
+    if (app.ready && serial) {
+      ipc
+        .listVolumes(serial)
+        .then((v) => (deviceVolumes = v))
+        .catch(() => (deviceVolumes = []));
+    } else {
+      deviceVolumes = [];
+      // Reset to internal storage when the device goes away.
+      deviceRoot = DEVICE_ROOT;
+      deviceRootLabel = "Internal storage";
+      devicePath = DEVICE_ROOT;
+    }
   });
 
   function navLocal(p: string) {
@@ -258,7 +287,8 @@
         : "Android device"}
       icon="📱"
       path={devicePath}
-      rootPath={DEVICE_ROOT}
+      rootPath={deviceRoot}
+      rootLabel={deviceRootLabel}
       entries={deviceEntries}
       loading={deviceLoading}
       error={deviceError}
@@ -281,7 +311,21 @@
         if (dragSource === "local") pushSelected();
         dragSource = null;
       }}
-    />
+    >
+      {#snippet headerExtra()}
+        {#if deviceVolumes.length > 1}
+          <select
+            class="vol-picker"
+            value={deviceRoot}
+            onchange={(e) => switchVolume((e.currentTarget as HTMLSelectElement).value)}
+          >
+            {#each deviceVolumes as v (v.path)}
+              <option value={v.path}>{v.label}</option>
+            {/each}
+          </select>
+        {/if}
+      {/snippet}
+    </Pane>
   </main>
 
   <TransferQueue />
@@ -323,6 +367,14 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  :global(.vol-picker) {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 11px;
   }
   .logo {
     font-size: 18px;

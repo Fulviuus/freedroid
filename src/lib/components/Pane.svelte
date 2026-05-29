@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import type { FileEntry } from "../ipc";
   import { formatSize, formatDate, fileIcon, parentPath } from "../util";
 
@@ -20,6 +21,8 @@
     onDragOut?: () => void; // a row drag started from this pane
     onDropIn?: () => void; // something was dropped onto this pane
     rootPath: string;
+    rootLabel?: string; // breadcrumb label for the root (else inferred)
+    headerExtra?: Snippet; // optional content in the header (e.g. volume picker)
   }
 
   let {
@@ -40,6 +43,8 @@
     onDragOut,
     onDropIn,
     rootPath,
+    rootLabel,
+    headerExtra,
   }: Props = $props();
 
   let dragOver = $state(false);
@@ -76,8 +81,8 @@
   // Breadcrumb segments relative to root.
   let crumbs = $derived.by(() => {
     const out: { label: string; path: string }[] = [];
-    const rootLabel = rootPath === "/sdcard" ? "Device" : "Home";
-    out.push({ label: rootLabel, path: rootPath });
+    const label = rootLabel ?? (rootPath === "/sdcard" ? "Device" : "Home");
+    out.push({ label, path: rootPath });
     if (path.startsWith(rootPath) && path !== rootPath) {
       const rest = path.slice(rootPath.length).replace(/^\/+/, "");
       let acc = rootPath;
@@ -116,6 +121,7 @@
 <section class="pane">
   <header class="pane-head">
     <span class="pane-title"><span class="pane-icon">{icon}</span>{title}</span>
+    {#if headerExtra}<div class="header-extra">{@render headerExtra()}</div>{/if}
     <div class="pane-actions">
       <button class="icon-btn" title="Up" disabled={!canUp} onclick={() => onNavigate(parentPath(path))}>↑</button>
       <button class="icon-btn" title="Refresh" onclick={onRefresh}>⟳</button>
@@ -203,6 +209,7 @@
     gap: 6px;
   }
   .pane-icon { font-size: 14px; }
+  .header-extra { margin-left: auto; margin-right: 8px; display: flex; align-items: center; }
   .pane-actions { display: flex; gap: 2px; }
   .icon-btn {
     border: none;

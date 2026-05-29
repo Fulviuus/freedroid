@@ -1,6 +1,6 @@
 //! Tauri command surface — the bridge invoked from the Svelte frontend.
 
-use crate::adb::{self, devices::Device, files::DirEntry, wifi};
+use crate::adb::{self, devices::Device, files::DirEntry, files::Volume, wifi};
 use crate::error::Result;
 use crate::local::{self, LocalEntry};
 use tauri::AppHandle;
@@ -19,6 +19,11 @@ pub async fn list_devices(app: AppHandle) -> Result<Vec<Device>> {
 #[tauri::command]
 pub async fn list_device_dir(app: AppHandle, serial: String, path: String) -> Result<Vec<DirEntry>> {
     adb::files::list_dir(&app, &serial, &path).await
+}
+
+#[tauri::command]
+pub async fn list_volumes(app: AppHandle, serial: String) -> Result<Vec<Volume>> {
+    adb::files::list_volumes(&app, &serial).await
 }
 
 #[tauri::command]

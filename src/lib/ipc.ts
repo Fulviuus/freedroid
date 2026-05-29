@@ -40,6 +40,14 @@ export const listDevices = () => invoke<Device[]>("list_devices");
 export const listDeviceDir = (serial: string, path: string) =>
   invoke<FileEntry[]>("list_device_dir", { serial, path });
 
+export interface Volume {
+  label: string;
+  path: string;
+}
+
+export const listVolumes = (serial: string) =>
+  invoke<Volume[]>("list_volumes", { serial });
+
 export const deviceMakeDir = (serial: string, path: string) =>
   invoke<void>("device_make_dir", { serial, path });
 

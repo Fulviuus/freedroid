@@ -17,6 +17,7 @@ pub fn run() {
             commands::adb_version,
             commands::list_devices,
             commands::list_device_dir,
+            commands::list_volumes,
             commands::device_make_dir,
             commands::device_remove,
             commands::device_rename,
