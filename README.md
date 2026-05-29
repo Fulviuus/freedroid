@@ -75,8 +75,11 @@ secrets (requires a paid Apple Developer account):
 | `APPLE_PASSWORD` | an app-specific password for notarization |
 | `APPLE_TEAM_ID` | your 10-character Team ID |
 
-The workflow passes these through to `tauri-action`, which signs and notarizes
-automatically when they're present.
+Then uncomment the `APPLE_*` env block in
+[`.github/workflows/release.yml`](.github/workflows/release.yml); `tauri-action`
+signs and notarizes automatically when those vars are present. (They're left
+commented by default — passing an *empty* `APPLE_CERTIFICATE` makes the bundler
+try and fail a certificate import.)
 
 ### Project layout
 
