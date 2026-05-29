@@ -1,7 +1,19 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { app } from "$lib/state.svelte";
   import * as ipc from "$lib/ipc";
+
+  // Drag the window from the title bar, except when grabbing an interactive
+  // control (the device dropdown / buttons).
+  function startDrag(e: MouseEvent) {
+    if (e.button !== 0) return;
+    const el = e.target as HTMLElement;
+    if (el.closest("button, select, input, a")) return;
+    getCurrentWindow()
+      .startDragging()
+      .catch(() => {});
+  }
   import type { FileEntry } from "$lib/ipc";
   import { joinPath } from "$lib/util";
   import Pane from "$lib/components/Pane.svelte";
@@ -265,7 +277,7 @@
 </script>
 
 <div class="app">
-  <header class="titlebar" data-tauri-drag-region>
+  <header class="titlebar" onmousedown={startDrag}>
     <div class="brand">
       <span class="logo">🤖</span>
       <span class="title">Freedroid</span>
