@@ -111,6 +111,39 @@ pub fn list_local_dir(path: String) -> Result<Vec<LocalEntry>> {
 }
 
 #[tauri::command]
+pub fn local_make_dir(path: String) -> Result<()> {
+    std::fs::create_dir(&path)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn local_rename(from: String, to: String) -> Result<()> {
+    std::fs::rename(&from, &to)?;
+    Ok(())
+}
+
+/// Move local items to the Trash (via Finder) so deletes stay reversible.
+#[tauri::command]
+pub fn local_trash(paths: Vec<String>) -> Result<()> {
+    for p in &paths {
+        let script = format!(
+            "tell application \"Finder\" to delete POSIX file \"{}\"",
+            p.replace('\\', "\\\\").replace('"', "\\\"")
+        );
+        let status = std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .status()?;
+        if !status.success() {
+            return Err(crate::error::Error::Other(format!(
+                "could not move {p} to Trash"
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn local_home() -> String {
     local::home_dir()
 }

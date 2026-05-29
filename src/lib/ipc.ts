@@ -25,6 +25,8 @@ export interface TransferProgress {
   direction: "push" | "pull";
   name: string;
   indeterminate: boolean;
+  bytesPerSec: number;
+  etaSecs: number;
 }
 
 export interface TransferDone {
@@ -89,6 +91,15 @@ export const listLocalDir = (path: string) =>
   invoke<FileEntry[]>("list_local_dir", { path });
 
 export const localHome = () => invoke<string>("local_home");
+
+export const localMakeDir = (path: string) =>
+  invoke<void>("local_make_dir", { path });
+
+export const localRename = (from: string, to: string) =>
+  invoke<void>("local_rename", { from, to });
+
+export const localTrash = (paths: string[]) =>
+  invoke<void>("local_trash", { paths });
 
 export const wifiEnableTcpip = (serial: string) =>
   invoke<string>("wifi_enable_tcpip", { serial });

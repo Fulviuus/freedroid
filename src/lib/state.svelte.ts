@@ -7,6 +7,8 @@ export interface Transfer {
   direction: "push" | "pull";
   percent: number;
   indeterminate: boolean;
+  bytesPerSec: number;
+  etaSecs: number;
   status: "active" | "done" | "error" | "cancelled";
   error?: string;
 }
@@ -62,17 +64,28 @@ class AppState {
   startTransfer(name: string, direction: "push" | "pull"): string {
     const id = uid();
     this.transfers = [
-      { id, name, direction, percent: 0, indeterminate: false, status: "active" },
+      {
+        id,
+        name,
+        direction,
+        percent: 0,
+        indeterminate: false,
+        bytesPerSec: 0,
+        etaSecs: 0,
+        status: "active",
+      },
       ...this.transfers,
     ];
     return id;
   }
 
-  updateProgress(id: string, percent: number, indeterminate: boolean) {
+  updateProgress(id: string, p: ipc.TransferProgress) {
     const t = this.transfers.find((x) => x.id === id);
     if (t && t.status === "active") {
-      t.percent = percent;
-      t.indeterminate = indeterminate;
+      t.percent = p.percent;
+      t.indeterminate = p.indeterminate;
+      t.bytesPerSec = p.bytesPerSec;
+      t.etaSecs = p.etaSecs;
     }
   }
 

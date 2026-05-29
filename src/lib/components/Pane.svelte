@@ -48,6 +48,41 @@
   }: Props = $props();
 
   let dragOver = $state(false);
+  let sortKey = $state<"name" | "size" | "mtime">("name");
+  let sortDir = $state<1 | -1>(1);
+  let filter = $state("");
+  let anchorIndex: number | null = null;
+
+  // Sort (folders first, then by the chosen column) and filter by name.
+  let view = $derived.by(() => {
+    const arr = [...entries];
+    arr.sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      let c = 0;
+      if (sortKey === "name")
+        c = a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      else if (sortKey === "size") c = a.size - b.size;
+      else c = a.mtime - b.mtime;
+      return c * sortDir;
+    });
+    const q = filter.trim().toLowerCase();
+    return q ? arr.filter((e) => e.name.toLowerCase().includes(q)) : arr;
+  });
+
+  function setSort(key: "name" | "size" | "mtime") {
+    if (sortKey === key) sortDir = sortDir === 1 ? -1 : 1;
+    else {
+      sortKey = key;
+      sortDir = 1;
+    }
+  }
+
+  // Clear the filter and selection anchor when the folder changes.
+  $effect(() => {
+    path;
+    filter = "";
+    anchorIndex = null;
+  });
 
   function rowDragStart(e: DragEvent, entry: FileEntry) {
     // If dragging a row that isn't part of the selection, select just it.
@@ -95,14 +130,20 @@
     return out;
   });
 
-  function rowClick(e: MouseEvent, entry: FileEntry) {
-    if (e.metaKey || e.ctrlKey) {
+  function rowClick(e: MouseEvent, entry: FileEntry, index: number) {
+    if (e.shiftKey && anchorIndex !== null) {
+      const [a, b] = [anchorIndex, index].sort((x, y) => x - y);
+      if (!(e.metaKey || e.ctrlKey)) selected.clear();
+      for (const en of view.slice(a, b + 1)) selected.add(en.path);
+    } else if (e.metaKey || e.ctrlKey) {
       selected.has(entry.path)
         ? selected.delete(entry.path)
         : selected.add(entry.path);
+      anchorIndex = index;
     } else {
       selected.clear();
       selected.add(entry.path);
+      anchorIndex = index;
     }
     selected = new Set(selected); // trigger reactivity
   }
@@ -136,6 +177,7 @@
       {#if i > 0}<span class="sep">›</span>{/if}
       <button class="crumb" onclick={() => onNavigate(c.path)}>{c.label}</button>
     {/each}
+    <input class="filter" placeholder="Filter…" bind:value={filter} />
   </nav>
 
   <div
@@ -155,11 +197,20 @@
       <div class="placeholder">Empty folder</div>
     {:else}
       <div class="row head">
-        <span class="col-name">Name</span>
-        <span class="col-size">Size</span>
-        <span class="col-date">Modified</span>
+        <button class="col-name sortbtn" onclick={() => setSort("name")}>
+          Name {sortKey === "name" ? (sortDir === 1 ? "▲" : "▼") : ""}
+        </button>
+        <button class="col-size sortbtn" onclick={() => setSort("size")}>
+          Size {sortKey === "size" ? (sortDir === 1 ? "▲" : "▼") : ""}
+        </button>
+        <button class="col-date sortbtn" onclick={() => setSort("mtime")}>
+          Modified {sortKey === "mtime" ? (sortDir === 1 ? "▲" : "▼") : ""}
+        </button>
       </div>
-      {#each entries as entry (entry.path)}
+      {#if view.length === 0}
+        <div class="placeholder">No matches</div>
+      {/if}
+      {#each view as entry, i (entry.path)}
         <div
           class="row"
           class:selected={selected.has(entry.path)}
@@ -168,7 +219,7 @@
           tabindex="-1"
           draggable="true"
           ondragstart={(e) => rowDragStart(e, entry)}
-          onclick={(e) => rowClick(e, entry)}
+          onclick={(e) => rowClick(e, entry, i)}
           ondblclick={() => rowDblClick(entry)}
         >
           <span class="col-name">
@@ -246,6 +297,30 @@
   }
   .crumb:hover { background: var(--hover); }
   .sep { color: var(--muted); font-size: 12px; }
+  .filter {
+    margin-left: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 12px;
+    width: 110px;
+    flex-shrink: 0;
+  }
+  .sortbtn {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    text-align: left;
+    padding: 0;
+  }
+  .sortbtn:hover { color: var(--text); }
 
   .filelist {
     flex: 1;

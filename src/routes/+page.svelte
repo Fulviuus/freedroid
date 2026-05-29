@@ -161,6 +161,39 @@
   // ----- Drag and drop between panes -----
   let dragSource = $state<"local" | "device" | null>(null);
 
+  // ----- Local (Mac) file ops -----
+  async function newFolderLocal() {
+    const name = prompt("New folder name:");
+    if (!name) return;
+    try {
+      await ipc.localMakeDir(joinPath(localPath, name));
+      loadLocal();
+    } catch (e) {
+      app.notify(String(e), "error");
+    }
+  }
+  async function deleteLocal() {
+    if (localSelected.size === 0) return;
+    if (!confirm(`Move ${localSelected.size} item(s) to the Trash?`)) return;
+    try {
+      await ipc.localTrash([...localSelected]);
+      localSelected = new Set();
+      loadLocal();
+    } catch (e) {
+      app.notify(String(e), "error");
+    }
+  }
+  async function renameLocal(entry: FileEntry) {
+    const next = prompt("Rename to:", entry.name);
+    if (!next || next === entry.name) return;
+    try {
+      await ipc.localRename(entry.path, joinPath(localPath, next));
+      loadLocal();
+    } catch (e) {
+      app.notify(String(e), "error");
+    }
+  }
+
   // ----- Device file ops -----
   async function newFolderDevice() {
     if (!app.selectedSerial) return;
@@ -218,9 +251,7 @@
     const poll = setInterval(() => app.refreshDevices(), 3000);
 
     const unsubs: Array<Promise<() => void>> = [
-      ipc.onTransferProgress((p) =>
-        app.updateProgress(p.id, p.percent, p.indeterminate),
-      ),
+      ipc.onTransferProgress((p) => app.updateProgress(p.id, p)),
       ipc.onTransferDone((d) =>
         app.finishTransfer(d.id, d.success, d.error ?? undefined),
       ),
@@ -251,13 +282,13 @@
       entries={localEntries}
       loading={localLoading}
       error={localError}
-      canWrite={false}
+      canWrite={true}
       bind:selected={localSelected}
       onNavigate={navLocal}
       onRefresh={loadLocal}
-      onNewFolder={() => {}}
-      onDelete={() => {}}
-      onRename={() => {}}
+      onNewFolder={newFolderLocal}
+      onDelete={deleteLocal}
+      onRename={renameLocal}
       onOpen={(entry) => ipc.openLocal(entry.path).catch((e) => app.notify(String(e), "error"))}
       onDragOut={() => (dragSource = "local")}
       onDropIn={() => {

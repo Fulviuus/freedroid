@@ -11,6 +11,21 @@ export function formatSize(bytes: number, isDir: boolean): string {
   return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
 }
 
+export function formatSpeed(bytesPerSec: number): string {
+  if (!bytesPerSec) return "";
+  return `${formatSize(bytesPerSec, false)}/s`;
+}
+
+export function formatEta(secs: number): string {
+  if (!secs) return "";
+  if (secs < 60) return `${secs}s left`;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  if (m < 60) return `${m}m ${s}s left`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m left`;
+}
+
 export function formatDate(epochSeconds: number): string {
   if (!epochSeconds) return "";
   const d = new Date(epochSeconds * 1000);

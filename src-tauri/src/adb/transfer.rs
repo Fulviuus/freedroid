@@ -42,6 +42,10 @@ pub struct Progress {
     pub name: String,
     /// True when we can't compute a percentage (folders / unknown size).
     pub indeterminate: bool,
+    /// Current throughput in bytes/sec (0 if unknown).
+    pub bytes_per_sec: u64,
+    /// Estimated seconds remaining (0 if unknown).
+    pub eta_secs: u64,
 }
 
 #[derive(Clone, Serialize)]
@@ -138,7 +142,17 @@ async fn sample(app: &AppHandle, probe: &Probe) -> Option<u64> {
     }
 }
 
-fn emit_progress(app: &AppHandle, id: &str, name: &str, dir: &str, pct: u8, indeterminate: bool) {
+#[allow(clippy::too_many_arguments)]
+fn emit_progress(
+    app: &AppHandle,
+    id: &str,
+    name: &str,
+    dir: &str,
+    pct: u8,
+    indeterminate: bool,
+    bytes_per_sec: u64,
+    eta_secs: u64,
+) {
     let _ = app.emit(
         "transfer://progress",
         Progress {
@@ -147,6 +161,8 @@ fn emit_progress(app: &AppHandle, id: &str, name: &str, dir: &str, pct: u8, inde
             direction: dir.to_string(),
             name: name.to_string(),
             indeterminate,
+            bytes_per_sec,
+            eta_secs,
         },
     );
 }
@@ -178,22 +194,34 @@ async fn run_transfer(
         let name = name.to_string();
         let direction = direction.to_string();
         Some(tauri::async_runtime::spawn(async move {
-            let mut last = 0u8;
+            let mut prev_sz = 0u64;
+            let mut prev_t = std::time::Instant::now();
             while !stop.load(Ordering::Relaxed) {
                 if let Some(sz) = sample(&app, &probe).await {
-                    let pct = (((sz.min(total) as f64) / total as f64) * 100.0) as u8;
+                    let now = std::time::Instant::now();
+                    let dt = now.duration_since(prev_t).as_secs_f64();
+                    let bps = if dt > 0.0 && sz >= prev_sz {
+                        ((sz - prev_sz) as f64 / dt) as u64
+                    } else {
+                        0
+                    };
+                    prev_sz = sz;
+                    prev_t = now;
+                    let pct = ((((sz.min(total)) as f64) / total as f64) * 100.0) as u8;
                     let pct = pct.min(99);
-                    if pct != last {
-                        last = pct;
-                        emit_progress(&app, &id, &name, &direction, pct, false);
-                    }
+                    let eta = if bps > 0 {
+                        total.saturating_sub(sz) / bps
+                    } else {
+                        0
+                    };
+                    emit_progress(&app, &id, &name, &direction, pct, false, bps, eta);
                 }
                 tokio::time::sleep(Duration::from_millis(400)).await;
             }
         }))
     } else {
         // No measurable size — tell the UI to show an indeterminate bar.
-        emit_progress(app, id, name, direction, 0, true);
+        emit_progress(app, id, name, direction, 0, true, 0, 0);
         None
     };
 
@@ -216,7 +244,7 @@ async fn run_transfer(
     app.state::<TransferRegistry>().0.lock().unwrap().remove(id);
 
     let result = if exit_ok {
-        emit_progress(app, id, name, direction, 100, false);
+        emit_progress(app, id, name, direction, 100, false, 0, 0);
         Ok(())
     } else {
         Err(Error::Adb(if stderr_buf.trim().is_empty() {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { app } from "../state.svelte";
+  import { formatSpeed, formatEta } from "../util";
 
   let active = $derived(app.transfers.filter((t) => t.status === "active").length);
 </script>
@@ -27,6 +28,9 @@
               ></div>
             </div>
             {#if t.status === "error"}<div class="err">{t.error}</div>{/if}
+            {#if t.status === "active" && t.bytesPerSec > 0}
+              <div class="rate">{formatSpeed(t.bytesPerSec)} · {formatEta(t.etaSecs)}</div>
+            {/if}
           </div>
           {#if t.status === "active"}
             <button class="cancel-btn" title="Cancel" onclick={() => app.cancelTransfer(t.id)}>✕</button>
@@ -116,6 +120,7 @@
     100% { background-position: 140% 0; }
   }
   .err { font-size: 11px; color: #ff453a; margin-top: 2px; }
+  .rate { font-size: 10px; color: var(--muted); margin-top: 2px; }
   .pct {
     font-size: 11px;
     color: var(--muted);

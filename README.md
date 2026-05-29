@@ -16,8 +16,12 @@ discontinued Android File Transfer.
 - 🔌 **USB transfer over ADB** — fast, reliable, scriptable.
 - 📶 **Wi-Fi mode** — switch a USB-connected device to wireless, or pair directly
   (Android 11+ wireless debugging).
-- 📂 **File operations** — create folders, rename, delete on the device.
-- 📊 **Live transfer progress** with a transfer queue.
+- 📂 **File operations** on both sides — create folders, rename, delete
+  (local deletes go to the Trash).
+- 💾 **SD card & storage volumes** — switch between internal storage and an SD card.
+- 📊 **Live transfer progress** with speed + ETA, a transfer queue, and cancel.
+- 🔎 **Sort, filter, and multi-select** (⌘-click and shift-click range).
+- 👁️ **Open files** straight from the device (downloaded to a temp folder first).
 - 🆓 **MIT-licensed**, no telemetry, no account, **nothing extra to install**.
 
 ## How it works
@@ -96,7 +100,11 @@ src-tauri/src/
 - [x] Wi-Fi mode (tcpip + wireless pairing)
 - [x] Drag-and-drop between the panes
 - [x] Folder (recursive) transfers
-- [ ] Code signing & notarization
+- [x] Cancel transfers; speed + ETA
+- [x] Sort / filter / shift-select; open files; local-side file ops
+- [x] SD card / storage volume switching
+- [ ] Code signing & notarization (config + CI ready; needs an Apple Developer ID)
+- [ ] MTP backend (connect without enabling USB debugging)
 
 > Note: dragging files *in from Finder* isn't supported — macOS WebViews can't
 > expose dropped files' real paths to HTML5 drag-and-drop, and Tauri's native
