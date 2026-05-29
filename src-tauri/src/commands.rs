@@ -66,6 +66,38 @@ pub async fn push_file(
     adb::transfer::push(&app, &serial, &local, &remote, &id, &name, total, is_dir).await
 }
 
+#[tauri::command]
+pub fn cancel_transfer(app: AppHandle, id: String) {
+    adb::transfer::cancel(&app, &id);
+}
+
+// ----- Open / preview -----
+
+/// Open a local file with its default macOS application.
+#[tauri::command]
+pub fn open_local(path: String) -> Result<()> {
+    std::process::Command::new("open").arg(&path).spawn()?;
+    Ok(())
+}
+
+/// Download a device file to a temp folder, then open it with the default app.
+#[tauri::command]
+pub async fn open_device_file(
+    app: AppHandle,
+    serial: String,
+    remote: String,
+    name: String,
+) -> Result<()> {
+    adb::validate_device_path(&remote)?;
+    let dir = std::env::temp_dir().join("freedroid-open");
+    std::fs::create_dir_all(&dir)?;
+    let local = dir.join(&name);
+    let local_str = local.to_string_lossy().to_string();
+    adb::run_on(&app, &serial, &["pull", "-a", &remote, &local_str]).await?;
+    std::process::Command::new("open").arg(&local).spawn()?;
+    Ok(())
+}
+
 // ----- Local filesystem (Mac pane) -----
 
 #[tauri::command]

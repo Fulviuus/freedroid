@@ -69,6 +69,14 @@ export const pushFile = (
   isDir: boolean,
 ) => invoke<void>("push_file", { serial, local, remote, id, name, total, isDir });
 
+export const cancelTransfer = (id: string) =>
+  invoke<void>("cancel_transfer", { id });
+
+export const openLocal = (path: string) => invoke<void>("open_local", { path });
+
+export const openDeviceFile = (serial: string, remote: string, name: string) =>
+  invoke<void>("open_device_file", { serial, remote, name });
+
 export const listLocalDir = (path: string) =>
   invoke<FileEntry[]>("list_local_dir", { path });
 

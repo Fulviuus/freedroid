@@ -16,7 +16,7 @@
     onNewFolder: () => void;
     onDelete: () => void;
     onRename: (entry: FileEntry) => void;
-    onActivate?: () => void; // double-click transfer of selection toward other pane
+    onOpen?: (entry: FileEntry) => void; // double-click a file to open it
     onDragOut?: () => void; // a row drag started from this pane
     onDropIn?: () => void; // something was dropped onto this pane
     rootPath: string;
@@ -36,7 +36,7 @@
     onNewFolder,
     onDelete,
     onRename,
-    onActivate,
+    onOpen,
     onDragOut,
     onDropIn,
     rootPath,
@@ -106,7 +106,7 @@
     if (entry.isDir) {
       onNavigate(entry.path);
     } else {
-      onActivate?.();
+      onOpen?.(entry);
     }
   }
 

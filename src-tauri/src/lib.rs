@@ -12,6 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .manage(adb::transfer::TransferRegistry::default())
         .invoke_handler(tauri::generate_handler![
             commands::adb_version,
             commands::list_devices,
@@ -21,6 +22,9 @@ pub fn run() {
             commands::device_rename,
             commands::pull_file,
             commands::push_file,
+            commands::cancel_transfer,
+            commands::open_local,
+            commands::open_device_file,
             commands::list_local_dir,
             commands::local_home,
             commands::wifi_enable_tcpip,

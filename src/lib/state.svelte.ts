@@ -7,7 +7,7 @@ export interface Transfer {
   direction: "push" | "pull";
   percent: number;
   indeterminate: boolean;
-  status: "active" | "done" | "error";
+  status: "active" | "done" | "error" | "cancelled";
   error?: string;
 }
 
@@ -70,7 +70,7 @@ class AppState {
 
   updateProgress(id: string, percent: number, indeterminate: boolean) {
     const t = this.transfers.find((x) => x.id === id);
-    if (t) {
+    if (t && t.status === "active") {
       t.percent = percent;
       t.indeterminate = indeterminate;
     }
@@ -78,10 +78,19 @@ class AppState {
 
   finishTransfer(id: string, success: boolean, error?: string) {
     const t = this.transfers.find((x) => x.id === id);
-    if (t) {
+    // Don't override a transfer the user already cancelled.
+    if (t && t.status !== "cancelled") {
       t.status = success ? "done" : "error";
       t.percent = success ? 100 : t.percent;
       if (error) t.error = error;
+    }
+  }
+
+  cancelTransfer(id: string) {
+    const t = this.transfers.find((x) => x.id === id);
+    if (t && t.status === "active") {
+      t.status = "cancelled";
+      ipc.cancelTransfer(id).catch(() => {});
     }
   }
 

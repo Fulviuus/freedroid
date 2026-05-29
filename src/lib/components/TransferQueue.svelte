@@ -20,15 +20,19 @@
               <div
                 class="fill"
                 class:error={t.status === "error"}
+                class:cancelled={t.status === "cancelled"}
                 class:done={t.status === "done"}
                 class:pulse={t.status === "active" && t.indeterminate}
-                style="width: {t.status === 'error' || (t.status === 'active' && t.indeterminate) ? 100 : t.percent}%"
+                style="width: {t.status === 'error' || t.status === 'cancelled' || (t.status === 'active' && t.indeterminate) ? 100 : t.percent}%"
               ></div>
             </div>
             {#if t.status === "error"}<div class="err">{t.error}</div>{/if}
           </div>
+          {#if t.status === "active"}
+            <button class="cancel-btn" title="Cancel" onclick={() => app.cancelTransfer(t.id)}>✕</button>
+          {/if}
           <span class="pct">
-            {#if t.status === "error"}Failed{:else if t.status === "done"}Done{:else if t.indeterminate}…{:else}{t.percent}%{/if}
+            {#if t.status === "error"}Failed{:else if t.status === "cancelled"}Cancelled{:else if t.status === "done"}Done{:else if t.indeterminate}…{:else}{t.percent}%{/if}
           </span>
         </div>
       {/each}
@@ -84,6 +88,18 @@
   .fill { height: 100%; background: var(--accent); transition: width 0.2s; }
   .fill.done { background: #34c759; }
   .fill.error { background: #ff453a; }
+  .fill.cancelled { background: var(--muted); }
+  .cancel-btn {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    line-height: 1;
+  }
+  .cancel-btn:hover { background: #ff3b3022; color: #ff453a; }
   .fill.pulse {
     background: linear-gradient(
       90deg,

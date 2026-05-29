@@ -229,7 +229,7 @@
       onNewFolder={() => {}}
       onDelete={() => {}}
       onRename={() => {}}
-      onActivate={pushSelected}
+      onOpen={(entry) => ipc.openLocal(entry.path).catch((e) => app.notify(String(e), "error"))}
       onDragOut={() => (dragSource = "local")}
       onDropIn={() => {
         if (dragSource === "device") pullSelected();
@@ -269,7 +269,13 @@
       onNewFolder={newFolderDevice}
       onDelete={deleteDevice}
       onRename={renameDevice}
-      onActivate={pullSelected}
+      onOpen={(entry) => {
+        if (!app.selectedSerial) return;
+        app.notify(`Opening ${entry.name}…`);
+        ipc
+          .openDeviceFile(app.selectedSerial, entry.path, entry.name)
+          .catch((e) => app.notify(String(e), "error"));
+      }}
       onDragOut={() => (dragSource = "device")}
       onDropIn={() => {
         if (dragSource === "local") pushSelected();

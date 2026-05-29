@@ -14,12 +14,24 @@
 use crate::adb::{run_on, shell_quote, validate_device_path};
 use crate::error::{Error, Result};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
-use tauri_plugin_shell::process::CommandEvent;
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
+
+/// Managed registry of in-flight transfers so they can be cancelled by id.
+#[derive(Default)]
+pub struct TransferRegistry(Mutex<HashMap<String, CommandChild>>);
+
+/// Kill a running transfer's adb process. Safe to call for unknown ids.
+pub fn cancel(app: &AppHandle, id: &str) {
+    if let Some(child) = app.state::<TransferRegistry>().0.lock().unwrap().remove(id) {
+        let _ = child.kill();
+    }
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -149,7 +161,13 @@ async fn run_transfer(
     total: u64,
 ) -> Result<()> {
     let cmd = app.shell().sidecar("adb")?;
-    let (mut rx, _child) = cmd.args(args).spawn()?;
+    let (mut rx, child) = cmd.args(args).spawn()?;
+    // Register so the transfer can be cancelled by id.
+    app.state::<TransferRegistry>()
+        .0
+        .lock()
+        .unwrap()
+        .insert(id.to_string(), child);
 
     // Background sampler drives the percentage by watching the destination size.
     let stop = Arc::new(AtomicBool::new(false));
@@ -194,6 +212,8 @@ async fn run_transfer(
     if let Some(h) = poll {
         h.abort();
     }
+    // Drop the (now-finished or killed) child from the registry.
+    app.state::<TransferRegistry>().0.lock().unwrap().remove(id);
 
     let result = if exit_ok {
         emit_progress(app, id, name, direction, 100, false);
