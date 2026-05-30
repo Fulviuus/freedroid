@@ -11,3 +11,6 @@ vite.config.ts.timestamp-*
 
 # Bundled adb sidecars are fetched by scripts/fetch-adb.sh (not committed — ~20MB each)
 /src-tauri/binaries/adb-*
+
+# Locally built MTP DMGs (scripts/build-mtp-dmg.sh)
+/dist

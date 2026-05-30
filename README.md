@@ -110,10 +110,10 @@ src-tauri/src/
 - [x] MTP mode (connect **without USB debugging**) — native libmtp FFI behind the
   `mtp` feature, with a USB/MTP toggle, storage switching, folder browsing, and
   transfers. Verified end-to-end against a real device.
-  Build it: `npm run tauri build -- --features mtp` (or `cargo run --features mtp
-  --example mtp_probe`). Remaining for shipping it in the default release:
-  bundling the `libmtp`/`libusb` dylibs into the `.app` (today an MTP build links
-  Homebrew's copies). Per-byte transfer progress for MTP is also still TODO.
+  - Ships as a **self-contained Apple-Silicon DMG** (`libmtp` + `libusb` bundled
+    into the `.app`, install names rewritten to `@rpath`): `scripts/build-mtp-dmg.sh`,
+    also built in CI and attached to each release.
+  - Per-byte transfer progress for MTP is still TODO (shows an indeterminate bar).
 
 > Note: dragging files *in from Finder* isn't supported — macOS WebViews can't
 > expose dropped files' real paths to HTML5 drag-and-drop, and Tauri's native

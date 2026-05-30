@@ -54,3 +54,42 @@ jobs:
           releaseBody: "See the assets below to download and install Freedroid."
           releaseDraft: true
           prerelease: false
+
+  # Self-contained, MTP-enabled build (Apple Silicon). Connects without USB
+  # debugging; libmtp + libusb are bundled into the .app. Attached as an extra
+  # asset on the same release.
+  release-mtp:
+    needs: release
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install libmtp
+        run: brew install libmtp
+
+      - name: Fetch bundled adb sidecar
+        run: bash scripts/fetch-adb.sh
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build self-contained MTP DMG
+        run: bash scripts/build-mtp-dmg.sh
+
+      - name: Upload MTP DMG to the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" dist/Freedroid_*_aarch64-mtp.dmg --clobber
