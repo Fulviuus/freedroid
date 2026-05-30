@@ -142,14 +142,19 @@ export const mtpConnect = () => invoke<MtpDeviceInfo>("mtp_connect");
 export const mtpDisconnect = () => invoke<void>("mtp_disconnect");
 export const mtpList = (storage: number, parent: number) =>
   invoke<MtpEntry[]>("mtp_list", { storage, parent });
-export const mtpPull = (id: number, local: string) =>
-  invoke<void>("mtp_pull", { id, local });
+export const mtpPull = (
+  id: number,
+  local: string,
+  transferId: string,
+  name: string,
+) => invoke<void>("mtp_pull", { id, local, transferId, name });
 export const mtpPush = (
   local: string,
   parent: number,
   storage: number,
   name: string,
-) => invoke<number>("mtp_push", { local, parent, storage, name });
+  transferId: string,
+) => invoke<number>("mtp_push", { local, parent, storage, name, transferId });
 export const mtpMkdir = (name: string, parent: number, storage: number) =>
   invoke<number>("mtp_mkdir", { name, parent, storage });
 export const mtpDelete = (id: number) => invoke<void>("mtp_delete", { id });

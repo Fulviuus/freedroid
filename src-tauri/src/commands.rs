@@ -3,7 +3,7 @@
 use crate::adb::{self, devices::Device, files::DirEntry, files::Volume, wifi};
 use crate::error::{Error, Result};
 use crate::local::{self, LocalEntry};
-use crate::mtp::{DeviceInfo, Entry as MtpEntry, Mtp};
+use crate::mtp::{DeviceInfo, Entry as MtpEntry, Mtp, ProgressInfo};
 use tauri::{AppHandle, State};
 
 #[tauri::command]
@@ -171,19 +171,41 @@ pub fn mtp_list(mtp: State<'_, Mtp>, storage: u32, parent: u32) -> Result<Vec<Mt
 }
 
 #[tauri::command]
-pub fn mtp_pull(mtp: State<'_, Mtp>, id: u32, local: String) -> Result<()> {
-    mtp.pull(id, local).map_err(Error::Other)
+pub fn mtp_pull(
+    app: AppHandle,
+    mtp: State<'_, Mtp>,
+    id: u32,
+    local: String,
+    transfer_id: String,
+    name: String,
+) -> Result<()> {
+    let prog = ProgressInfo {
+        app,
+        id: transfer_id,
+        name,
+        direction: "pull",
+    };
+    mtp.pull(id, local, Some(prog)).map_err(Error::Other)
 }
 
 #[tauri::command]
 pub fn mtp_push(
+    app: AppHandle,
     mtp: State<'_, Mtp>,
     local: String,
     parent: u32,
     storage: u32,
     name: String,
+    transfer_id: String,
 ) -> Result<u32> {
-    mtp.push(local, parent, storage, name).map_err(Error::Other)
+    let prog = ProgressInfo {
+        app,
+        id: transfer_id,
+        name: name.clone(),
+        direction: "push",
+    };
+    mtp.push(local, parent, storage, name, Some(prog))
+        .map_err(Error::Other)
 }
 
 #[tauri::command]

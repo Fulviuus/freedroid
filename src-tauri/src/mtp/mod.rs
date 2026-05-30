@@ -12,6 +12,16 @@
 
 use serde::Serialize;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use tauri::AppHandle;
+
+/// Context for emitting live progress during an MTP transfer (matches the adb
+/// path's `transfer://progress` events so the frontend handles both uniformly).
+pub struct ProgressInfo {
+    pub app: AppHandle,
+    pub id: String,
+    pub name: String,
+    pub direction: &'static str,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -42,10 +52,81 @@ pub struct DeviceInfo {
 // ===================== feature = "mtp": real libmtp FFI =====================
 #[cfg(feature = "mtp")]
 mod imp {
-    use super::{DeviceInfo, Entry, Storage};
+    use super::{DeviceInfo, Entry, ProgressInfo, Storage};
+    use crate::adb::transfer::Progress;
+    use std::cell::Cell;
     use std::ffi::{CStr, CString};
     use std::os::raw::{c_char, c_int, c_void};
     use std::ptr;
+    use std::time::Instant;
+    use tauri::Emitter;
+
+    type ProgressFn = extern "C" fn(u64, u64, *const c_void) -> c_int;
+
+    struct ProgressCtx {
+        info: ProgressInfo,
+        last_pct: Cell<u8>,
+        last_sent: Cell<u64>,
+        last_t: Cell<Instant>,
+    }
+
+    /// libmtp progress callback. Throttled to once per integer percent; computes
+    /// throughput + ETA over the interval and emits a `transfer://progress` event.
+    extern "C" fn progress_cb(sent: u64, total: u64, data: *const c_void) -> c_int {
+        if data.is_null() || total == 0 {
+            return 0;
+        }
+        let ctx = unsafe { &*(data as *const ProgressCtx) };
+        let pct = (((sent.min(total)) as f64 / total as f64) * 100.0) as u8;
+        let pct = pct.min(99); // 100 comes from the frontend on completion
+        if pct == ctx.last_pct.get() {
+            return 0;
+        }
+        let now = Instant::now();
+        let dt = now.duration_since(ctx.last_t.get()).as_secs_f64();
+        let bps = if dt > 0.0 && sent >= ctx.last_sent.get() {
+            ((sent - ctx.last_sent.get()) as f64 / dt) as u64
+        } else {
+            0
+        };
+        let eta = if bps > 0 {
+            total.saturating_sub(sent) / bps
+        } else {
+            0
+        };
+        ctx.last_pct.set(pct);
+        ctx.last_sent.set(sent);
+        ctx.last_t.set(now);
+        let _ = ctx.info.app.emit(
+            "transfer://progress",
+            Progress {
+                id: ctx.info.id.clone(),
+                percent: pct,
+                direction: ctx.info.direction.to_string(),
+                name: ctx.info.name.clone(),
+                indeterminate: false,
+                bytes_per_sec: bps,
+                eta_secs: eta,
+            },
+        );
+        0
+    }
+
+    fn ctx_for(info: &Option<ProgressInfo>) -> Option<Box<ProgressCtx>> {
+        info.as_ref().map(|i| {
+            Box::new(ProgressCtx {
+                info: ProgressInfo {
+                    app: i.app.clone(),
+                    id: i.id.clone(),
+                    name: i.name.clone(),
+                    direction: i.direction,
+                },
+                last_pct: Cell::new(255),
+                last_sent: Cell::new(0),
+                last_t: Cell::new(Instant::now()),
+            })
+        })
+    }
 
     #[repr(C)]
     struct DeviceEntry {
@@ -117,14 +198,14 @@ mod imp {
             dev: *mut MtpDevice,
             id: u32,
             path: *const c_char,
-            cb: *const c_void,
+            cb: Option<ProgressFn>,
             data: *const c_void,
         ) -> c_int;
         fn LIBMTP_Send_File_From_File(
             dev: *mut MtpDevice,
             path: *const c_char,
             filedata: *mut MtpFile,
-            cb: *const c_void,
+            cb: Option<ProgressFn>,
             data: *const c_void,
         ) -> c_int;
         fn LIBMTP_Create_Folder(
@@ -258,11 +339,19 @@ mod imp {
             }
         }
 
-        pub fn pull(&self, object_id: u32, local: &str) -> Result<(), String> {
+        pub fn pull(
+            &self,
+            object_id: u32,
+            local: &str,
+            progress: Option<ProgressInfo>,
+        ) -> Result<(), String> {
             let c = CString::new(local).map_err(|_| "bad local path".to_string())?;
-            let rc = unsafe {
-                LIBMTP_Get_File_To_File(self.handle, object_id, c.as_ptr(), ptr::null(), ptr::null())
+            let ctx = ctx_for(&progress);
+            let (cb, data): (Option<ProgressFn>, *const c_void) = match &ctx {
+                Some(b) => (Some(progress_cb), &**b as *const ProgressCtx as *const c_void),
+                None => (None, ptr::null()),
             };
+            let rc = unsafe { LIBMTP_Get_File_To_File(self.handle, object_id, c.as_ptr(), cb, data) };
             if rc == 0 {
                 Ok(())
             } else {
@@ -276,6 +365,7 @@ mod imp {
             parent_id: u32,
             storage_id: u32,
             name: &str,
+            progress: Option<ProgressInfo>,
         ) -> Result<u32, String> {
             let meta = std::fs::metadata(local).map_err(|e| e.to_string())?;
             let cname = CString::new(name).map_err(|_| "bad name".to_string())?;
@@ -290,14 +380,13 @@ mod imp {
                 filetype: FILETYPE_UNKNOWN,
                 next: ptr::null_mut(),
             };
+            let ctx = ctx_for(&progress);
+            let (cb, data): (Option<ProgressFn>, *const c_void) = match &ctx {
+                Some(b) => (Some(progress_cb), &**b as *const ProgressCtx as *const c_void),
+                None => (None, ptr::null()),
+            };
             let rc = unsafe {
-                LIBMTP_Send_File_From_File(
-                    self.handle,
-                    cpath.as_ptr(),
-                    &mut file,
-                    ptr::null(),
-                    ptr::null(),
-                )
+                LIBMTP_Send_File_From_File(self.handle, cpath.as_ptr(), &mut file, cb, data)
             };
             if rc == 0 {
                 Ok(file.item_id)
@@ -347,7 +436,7 @@ mod imp {
 // ===================== no feature: stub =====================
 #[cfg(not(feature = "mtp"))]
 mod imp {
-    use super::{DeviceInfo, Entry, Storage};
+    use super::{DeviceInfo, Entry, ProgressInfo, Storage};
 
     const MSG: &str = "MTP support is not built into this app (rebuild with --features mtp)";
 
@@ -370,10 +459,17 @@ mod imp {
         pub fn list(&self, _s: u32, _p: u32) -> Result<Vec<Entry>, String> {
             Err(MSG.into())
         }
-        pub fn pull(&self, _id: u32, _local: &str) -> Result<(), String> {
+        pub fn pull(&self, _id: u32, _local: &str, _p: Option<ProgressInfo>) -> Result<(), String> {
             Err(MSG.into())
         }
-        pub fn push(&self, _l: &str, _p: u32, _s: u32, _n: &str) -> Result<u32, String> {
+        pub fn push(
+            &self,
+            _l: &str,
+            _p: u32,
+            _s: u32,
+            _n: &str,
+            _pr: Option<ProgressInfo>,
+        ) -> Result<u32, String> {
             Err(MSG.into())
         }
         pub fn mkdir(&self, _n: &str, _p: u32, _s: u32) -> Result<u32, String> {
@@ -392,8 +488,15 @@ use imp::Device;
 enum Cmd {
     Connect(SyncSender<Result<DeviceInfo, String>>),
     List(u32, u32, SyncSender<Result<Vec<Entry>, String>>),
-    Pull(u32, String, SyncSender<Result<(), String>>),
-    Push(String, u32, u32, String, SyncSender<Result<u32, String>>),
+    Pull(u32, String, Option<ProgressInfo>, SyncSender<Result<(), String>>),
+    Push(
+        String,
+        u32,
+        u32,
+        String,
+        Option<ProgressInfo>,
+        SyncSender<Result<u32, String>>,
+    ),
     Mkdir(String, u32, u32, SyncSender<Result<u32, String>>),
     Delete(u32, SyncSender<Result<(), String>>),
     Disconnect(SyncSender<Result<(), String>>),
@@ -424,11 +527,11 @@ fn worker(rx: Receiver<Cmd>) {
             Cmd::List(s, p, r) => {
                 let _ = r.send(with(&dev, |d| d.list(s, p)));
             }
-            Cmd::Pull(id, local, r) => {
-                let _ = r.send(with(&dev, |d| d.pull(id, &local)));
+            Cmd::Pull(id, local, prog, r) => {
+                let _ = r.send(with(&dev, |d| d.pull(id, &local, prog)));
             }
-            Cmd::Push(local, parent, storage, name, r) => {
-                let _ = r.send(with(&dev, |d| d.push(&local, parent, storage, &name)));
+            Cmd::Push(local, parent, storage, name, prog, r) => {
+                let _ = r.send(with(&dev, |d| d.push(&local, parent, storage, &name, prog)));
             }
             Cmd::Mkdir(name, parent, storage, r) => {
                 let _ = r.send(with(&dev, |d| d.mkdir(&name, parent, storage)));
@@ -472,11 +575,18 @@ impl Mtp {
     pub fn list(&self, storage: u32, parent: u32) -> Result<Vec<Entry>, String> {
         self.call(|r| Cmd::List(storage, parent, r))
     }
-    pub fn pull(&self, id: u32, local: String) -> Result<(), String> {
-        self.call(|r| Cmd::Pull(id, local, r))
+    pub fn pull(&self, id: u32, local: String, prog: Option<ProgressInfo>) -> Result<(), String> {
+        self.call(|r| Cmd::Pull(id, local, prog, r))
     }
-    pub fn push(&self, local: String, parent: u32, storage: u32, name: String) -> Result<u32, String> {
-        self.call(|r| Cmd::Push(local, parent, storage, name, r))
+    pub fn push(
+        &self,
+        local: String,
+        parent: u32,
+        storage: u32,
+        name: String,
+        prog: Option<ProgressInfo>,
+    ) -> Result<u32, String> {
+        self.call(|r| Cmd::Push(local, parent, storage, name, prog, r))
     }
     pub fn mkdir(&self, name: String, parent: u32, storage: u32) -> Result<u32, String> {
         self.call(|r| Cmd::Mkdir(name, parent, storage, r))
@@ -522,7 +632,7 @@ pub fn probe() -> Result<String, String> {
             let dest = std::env::temp_dir().join("freedroid-mtp-test.bin");
             let dest_s = dest.to_string_lossy().to_string();
             report.push_str(&format!("Pull test: \"{}\" ({} bytes)… ", f.name, f.size));
-            match dev.pull(f.id, &dest_s) {
+            match dev.pull(f.id, &dest_s, None) {
                 Ok(()) => {
                     let got = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
                     report.push_str(if got == f.size { "SIZE OK\n" } else { "size mismatch\n" });
@@ -539,7 +649,7 @@ pub fn probe() -> Result<String, String> {
         match dev.mkdir("FreedroidMTPTest", 0, s0.id) {
             Ok(folder_id) => {
                 report.push_str("mkdir ok, ");
-                match dev.push(&src.to_string_lossy(), folder_id, s0.id, "hello.txt") {
+                match dev.push(&src.to_string_lossy(), folder_id, s0.id, "hello.txt", None) {
                     Ok(file_id) => {
                         let listed = dev.list(s0.id, folder_id).unwrap_or_default();
                         let ok = listed.iter().any(|e| e.name == "hello.txt");

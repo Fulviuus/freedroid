@@ -4,7 +4,7 @@ mod error;
 mod local;
 pub mod mtp;
 
-use tauri::{RunEvent, WindowEvent};
+use tauri::{Manager, RunEvent, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -56,6 +56,8 @@ pub fn run() {
                 ..
             } = event
             {
+                // Release the MTP device so its USB interface isn't left claimed.
+                let _ = app.state::<mtp::Mtp>().disconnect();
                 let app = app.clone();
                 tauri::async_runtime::block_on(async move {
                     adb::kill_server(&app).await;

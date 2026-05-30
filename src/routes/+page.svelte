@@ -212,19 +212,7 @@
   // adb push/pull handle directories recursively. We pass the destination
   // *directory* (not a full path) and let adb name the copy after the source,
   // which works uniformly for both files and folders.
-  // MTP transfers (no per-byte progress from libmtp here → indeterminate bar).
-  function markIndeterminate(id: string, direction: "push" | "pull", name: string) {
-    app.updateProgress(id, {
-      id,
-      percent: 0,
-      direction,
-      name,
-      indeterminate: true,
-      bytesPerSec: 0,
-      etaSecs: 0,
-    });
-  }
-
+  // MTP transfers — libmtp's progress callback drives the bar (see mtp_pull/push).
   async function pushSelectedMtp() {
     const parent = mtpIds.get(devicePath) ?? 0;
     const files = localEntries.filter((e) => localSelected.has(e.path) && !e.isDir);
@@ -232,9 +220,8 @@
       app.notify("MTP can't push folders yet — select files", "info");
     for (const entry of files) {
       const id = app.startTransfer(entry.name, "push");
-      markIndeterminate(id, "push", entry.name);
       try {
-        await ipc.mtpPush(entry.path, parent, mtpStorageId, entry.name);
+        await ipc.mtpPush(entry.path, parent, mtpStorageId, entry.name, id);
         app.finishTransfer(id, true);
       } catch (e) {
         app.finishTransfer(id, false, String(e));
@@ -251,9 +238,8 @@
       const oid = mtpIds.get(entry.path);
       if (oid == null) continue;
       const id = app.startTransfer(entry.name, "pull");
-      markIndeterminate(id, "pull", entry.name);
       try {
-        await ipc.mtpPull(oid, joinPath(localPath, entry.name));
+        await ipc.mtpPull(oid, joinPath(localPath, entry.name), id, entry.name);
         app.finishTransfer(id, true);
       } catch (e) {
         app.finishTransfer(id, false, String(e));
@@ -413,7 +399,7 @@
       app.notify(`Opening ${entry.name}…`);
       const tmp = `/tmp/freedroid-open-${entry.name}`;
       try {
-        await ipc.mtpPull(oid, tmp);
+        await ipc.mtpPull(oid, tmp, "open", entry.name);
         await ipc.openLocal(tmp);
       } catch (e) {
         app.notify(String(e), "error");
