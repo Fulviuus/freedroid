@@ -10,10 +10,14 @@ discontinued Android File Transfer.
 > Freedroid is an independent project. It is not affiliated with, endorsed by, or
 > derived from MacDroid or its assets — only its functionality is reimplemented.
 
+![Freedroid — dual-pane Android file transfer for macOS](docs/screenshot.png)
+
 ## Features
 
 - 📱 **Dual-pane file manager** — Mac on the left, Android on the right, copy either way.
 - 🔌 **USB transfer over ADB** — fast, reliable, scriptable.
+- 🔓 **MTP mode** — connect **without enabling USB debugging** (native libmtp),
+  with the same browse/transfer experience. *(optional `mtp` build)*
 - 📶 **Wi-Fi mode** — switch a USB-connected device to wireless, or pair directly
   (Android 11+ wireless debugging).
 - 📂 **File operations** on both sides — create folders, rename, delete
@@ -30,12 +34,18 @@ Freedroid is a [Tauri 2](https://v2.tauri.app) app: a Rust backend drives the
 Android Debug Bridge (`adb`), and a Svelte frontend renders the UI. The `adb`
 binary is bundled as a sidecar, so there's nothing to install separately.
 
+An optional **MTP backend** (Rust FFI to `libmtp`, behind the `mtp` cargo
+feature) lets the app talk to Android over MTP — no USB debugging required. The
+default build doesn't include it, so the normal app stays install-free.
+
 ## Requirements
 
 - macOS 11+ (Apple Silicon or Intel)
-- On your phone: **Settings → Developer options → USB debugging** enabled
-  (tap *Build number* 7× to reveal Developer options). Approve the
-  "Allow USB debugging?" prompt when you first connect.
+- For the default (ADB) mode, on your phone: **Settings → Developer options →
+  USB debugging** enabled (tap *Build number* 7× to reveal Developer options).
+  Approve the "Allow USB debugging?" prompt when you first connect.
+- For **MTP mode** (the `mtp` build), no developer settings are needed — just set
+  the USB connection to **File Transfer / MTP**.
 
 ## Development
 
@@ -55,6 +65,19 @@ npm run tauri build
 # universal (Apple Silicon + Intel):
 npm run tauri build -- --target universal-apple-darwin
 ```
+
+### MTP build (connect without USB debugging)
+
+The MTP backend needs `libmtp` at build time and bundles it into the `.app`:
+
+```bash
+brew install libmtp
+./scripts/build-mtp-dmg.sh   # -> dist/Freedroid_<ver>_aarch64-mtp.dmg (self-contained)
+# or just run it during development:
+npm run tauri dev -- --features mtp
+```
+
+CI builds this self-contained DMG (Apple Silicon) and attaches it to each release.
 
 ## Releases & code signing
 
@@ -90,6 +113,7 @@ src/                  Svelte frontend
   lib/components/      Pane, DevicePicker, WifiDialog, TransferQueue
 src-tauri/src/
   adb/                adb wrapper: devices, files, transfer, wifi
+  mtp/                native libmtp FFI backend (optional `mtp` feature)
   local.rs            local (Mac) filesystem listing
   commands.rs         #[tauri::command] surface
 ```
@@ -108,12 +132,13 @@ src-tauri/src/
 - [x] SD card / storage volume switching
 - [ ] Code signing & notarization (config + CI ready; needs an Apple Developer ID)
 - [x] MTP mode (connect **without USB debugging**) — native libmtp FFI behind the
-  `mtp` feature, with a USB/MTP toggle, storage switching, folder browsing, and
-  transfers. Verified end-to-end against a real device.
+  `mtp` feature, with a USB/MTP toggle, storage switching, folder browsing,
+  transfers (with live progress via libmtp's callback), open, and delete.
+  Verified end-to-end against a real device.
   - Ships as a **self-contained Apple-Silicon DMG** (`libmtp` + `libusb` bundled
     into the `.app`, install names rewritten to `@rpath`): `scripts/build-mtp-dmg.sh`,
     also built in CI and attached to each release.
-  - Per-byte transfer progress for MTP is still TODO (shows an indeterminate bar).
+  - Folder (recursive) MTP transfers are still TODO — select files, not folders.
 
 > Note: dragging files *in from Finder* isn't supported — macOS WebViews can't
 > expose dropped files' real paths to HTML5 drag-and-drop, and Tauri's native
