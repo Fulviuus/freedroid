@@ -1,9 +1,10 @@
 //! Tauri command surface — the bridge invoked from the Svelte frontend.
 
 use crate::adb::{self, devices::Device, files::DirEntry, files::Volume, wifi};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::local::{self, LocalEntry};
-use tauri::AppHandle;
+use crate::mtp::{DeviceInfo, Entry as MtpEntry, Mtp};
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub async fn adb_version(app: AppHandle) -> Result<String> {
@@ -155,6 +156,49 @@ pub fn local_trash(paths: Vec<String>) -> Result<()> {
 #[tauri::command]
 pub fn local_home() -> String {
     local::home_dir()
+}
+
+// ----- MTP (connect without USB debugging) -----
+
+#[tauri::command]
+pub fn mtp_connect(mtp: State<'_, Mtp>) -> Result<DeviceInfo> {
+    mtp.connect().map_err(Error::Other)
+}
+
+#[tauri::command]
+pub fn mtp_list(mtp: State<'_, Mtp>, storage: u32, parent: u32) -> Result<Vec<MtpEntry>> {
+    mtp.list(storage, parent).map_err(Error::Other)
+}
+
+#[tauri::command]
+pub fn mtp_pull(mtp: State<'_, Mtp>, id: u32, local: String) -> Result<()> {
+    mtp.pull(id, local).map_err(Error::Other)
+}
+
+#[tauri::command]
+pub fn mtp_push(
+    mtp: State<'_, Mtp>,
+    local: String,
+    parent: u32,
+    storage: u32,
+    name: String,
+) -> Result<u32> {
+    mtp.push(local, parent, storage, name).map_err(Error::Other)
+}
+
+#[tauri::command]
+pub fn mtp_mkdir(mtp: State<'_, Mtp>, name: String, parent: u32, storage: u32) -> Result<u32> {
+    mtp.mkdir(name, parent, storage).map_err(Error::Other)
+}
+
+#[tauri::command]
+pub fn mtp_delete(mtp: State<'_, Mtp>, id: u32) -> Result<()> {
+    mtp.delete(id).map_err(Error::Other)
+}
+
+#[tauri::command]
+pub fn mtp_disconnect(mtp: State<'_, Mtp>) -> Result<()> {
+    mtp.disconnect().map_err(Error::Other)
 }
 
 // ----- Wi-Fi -----

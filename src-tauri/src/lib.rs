@@ -2,8 +2,6 @@ mod adb;
 mod commands;
 mod error;
 mod local;
-
-#[cfg(feature = "mtp")]
 pub mod mtp;
 
 use tauri::{RunEvent, WindowEvent};
@@ -16,6 +14,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(adb::transfer::TransferRegistry::default())
+        .manage(mtp::Mtp::default())
         .invoke_handler(tauri::generate_handler![
             commands::adb_version,
             commands::list_devices,
@@ -39,6 +38,13 @@ pub fn run() {
             commands::wifi_connect,
             commands::wifi_disconnect,
             commands::wifi_pair,
+            commands::mtp_connect,
+            commands::mtp_list,
+            commands::mtp_pull,
+            commands::mtp_push,
+            commands::mtp_mkdir,
+            commands::mtp_delete,
+            commands::mtp_disconnect,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
