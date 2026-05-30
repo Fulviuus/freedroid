@@ -50,6 +50,88 @@
     devicePath = vol.path;
   }
 
+  // ----- MTP mode (connect without USB debugging) -----
+  let deviceBackend = $state<"adb" | "mtp">("adb");
+  let mtpStorages = $state<ipc.MtpStorage[]>([]);
+  let mtpStorageId = $state(0);
+  let mtpName = $state("");
+  // Synthetic path -> MTP object id ("/" -> 0 = storage root).
+  let mtpIds = new Map<string, number>();
+
+  let mtpConnected = $derived(deviceBackend === "mtp" && mtpStorages.length > 0);
+  let deviceReady = $derived(deviceBackend === "mtp" ? mtpConnected : app.ready);
+
+  function mtpChild(parent: string, name: string): string {
+    return parent === "/" ? "/" + name : parent + "/" + name;
+  }
+
+  async function connectMtp() {
+    try {
+      const info = await ipc.mtpConnect();
+      if (info.storages.length === 0) throw new Error("no MTP storage found");
+      mtpName = info.name;
+      mtpStorages = info.storages;
+      mtpStorageId = info.storages[0].id;
+      deviceBackend = "mtp";
+      mtpIds = new Map([["/", 0]]);
+      deviceRoot = "/";
+      deviceRootLabel = info.storages[0].description;
+      deviceSelected = new Set();
+      devicePath = "/";
+      loadDevice();
+    } catch (e) {
+      app.notify(String(e), "error");
+    }
+  }
+
+  function switchToAdb() {
+    deviceBackend = "adb";
+    mtpStorages = [];
+    ipc.mtpDisconnect().catch(() => {});
+    deviceRoot = DEVICE_ROOT;
+    deviceRootLabel = "Internal storage";
+    deviceSelected = new Set();
+    devicePath = DEVICE_ROOT;
+    loadDevice();
+  }
+
+  function switchMtpStorage(idStr: string) {
+    const s = mtpStorages.find((x) => x.id === Number(idStr));
+    if (!s) return;
+    mtpStorageId = s.id;
+    mtpIds = new Map([["/", 0]]);
+    deviceRootLabel = s.description;
+    deviceSelected = new Set();
+    devicePath = "/";
+    loadDevice();
+  }
+
+  async function loadDeviceMtp() {
+    const parent = mtpIds.get(devicePath) ?? 0;
+    deviceLoading = true;
+    deviceError = null;
+    try {
+      const items = await ipc.mtpList(mtpStorageId, parent);
+      deviceEntries = items.map((it) => {
+        const p = mtpChild(devicePath, it.name);
+        mtpIds.set(p, it.id);
+        return {
+          name: it.name,
+          path: p,
+          size: it.size,
+          mtime: it.mtime,
+          isDir: it.isDir,
+          isSymlink: false,
+        };
+      });
+    } catch (e) {
+      deviceError = String(e);
+      deviceEntries = [];
+    } finally {
+      deviceLoading = false;
+    }
+  }
+
   let showWifi = $state(false);
 
   async function loadLocal() {
@@ -66,6 +148,7 @@
   }
 
   async function loadDevice() {
+    if (deviceBackend === "mtp") return loadDeviceMtp();
     if (!app.ready || !app.selectedSerial) {
       deviceEntries = [];
       deviceError =
@@ -93,12 +176,15 @@
     devicePath;
     app.selectedSerial;
     app.ready;
+    deviceBackend;
+    mtpStorageId;
     loadDevice();
   });
 
   // Load the device's storage volumes (internal + SD card) when it's ready.
   $effect(() => {
     const serial = app.selectedSerial;
+    if (deviceBackend !== "adb") return; // MTP manages its own storages
     if (app.ready && serial) {
       ipc
         .listVolumes(serial)
@@ -126,7 +212,58 @@
   // adb push/pull handle directories recursively. We pass the destination
   // *directory* (not a full path) and let adb name the copy after the source,
   // which works uniformly for both files and folders.
+  // MTP transfers (no per-byte progress from libmtp here → indeterminate bar).
+  function markIndeterminate(id: string, direction: "push" | "pull", name: string) {
+    app.updateProgress(id, {
+      id,
+      percent: 0,
+      direction,
+      name,
+      indeterminate: true,
+      bytesPerSec: 0,
+      etaSecs: 0,
+    });
+  }
+
+  async function pushSelectedMtp() {
+    const parent = mtpIds.get(devicePath) ?? 0;
+    const files = localEntries.filter((e) => localSelected.has(e.path) && !e.isDir);
+    if (localEntries.some((e) => localSelected.has(e.path) && e.isDir))
+      app.notify("MTP can't push folders yet — select files", "info");
+    for (const entry of files) {
+      const id = app.startTransfer(entry.name, "push");
+      markIndeterminate(id, "push", entry.name);
+      try {
+        await ipc.mtpPush(entry.path, parent, mtpStorageId, entry.name);
+        app.finishTransfer(id, true);
+      } catch (e) {
+        app.finishTransfer(id, false, String(e));
+      }
+    }
+    loadDevice();
+  }
+
+  async function pullSelectedMtp() {
+    const files = deviceEntries.filter((e) => deviceSelected.has(e.path) && !e.isDir);
+    if (deviceEntries.some((e) => deviceSelected.has(e.path) && e.isDir))
+      app.notify("MTP can't pull folders yet — select files", "info");
+    for (const entry of files) {
+      const oid = mtpIds.get(entry.path);
+      if (oid == null) continue;
+      const id = app.startTransfer(entry.name, "pull");
+      markIndeterminate(id, "pull", entry.name);
+      try {
+        await ipc.mtpPull(oid, joinPath(localPath, entry.name));
+        app.finishTransfer(id, true);
+      } catch (e) {
+        app.finishTransfer(id, false, String(e));
+      }
+    }
+    loadLocal();
+  }
+
   async function pushSelected() {
+    if (deviceBackend === "mtp") return pushSelectedMtp();
     if (!app.selectedSerial) return;
     const items = localEntries.filter((e) => localSelected.has(e.path));
     for (const entry of items) {
@@ -149,6 +286,7 @@
   }
 
   async function pullSelected() {
+    if (deviceBackend === "mtp") return pullSelectedMtp();
     if (!app.selectedSerial) return;
     const items = deviceEntries.filter((e) => deviceSelected.has(e.path));
     for (const entry of items) {
@@ -211,25 +349,36 @@
 
   // ----- Device file ops -----
   async function newFolderDevice() {
-    if (!app.selectedSerial) return;
     const name = prompt("New folder name:");
     if (!name) return;
     try {
-      await ipc.deviceMakeDir(app.selectedSerial, joinPath(devicePath, name));
+      if (deviceBackend === "mtp") {
+        await ipc.mtpMkdir(name, mtpIds.get(devicePath) ?? 0, mtpStorageId);
+      } else {
+        if (!app.selectedSerial) return;
+        await ipc.deviceMakeDir(app.selectedSerial, joinPath(devicePath, name));
+      }
       loadDevice();
     } catch (e) {
       app.notify(String(e), "error");
     }
   }
   async function deleteDevice() {
-    if (!app.selectedSerial || deviceSelected.size === 0) return;
+    if (deviceSelected.size === 0) return;
     const n = deviceSelected.size;
     if (!confirm(`Delete ${n} item(s) from the device? This cannot be undone.`))
       return;
-    const paths = [...deviceSelected];
     app.notify(`Deleting ${n} item${n === 1 ? "" : "s"}…`);
     try {
-      await ipc.deviceRemoveMany(app.selectedSerial, paths);
+      if (deviceBackend === "mtp") {
+        for (const p of deviceSelected) {
+          const oid = mtpIds.get(p);
+          if (oid != null) await ipc.mtpDelete(oid);
+        }
+      } else {
+        if (!app.selectedSerial) return;
+        await ipc.deviceRemoveMany(app.selectedSerial, [...deviceSelected]);
+      }
       app.notify(`Deleted ${n} item${n === 1 ? "" : "s"}`);
       deviceSelected = new Set();
     } catch (e) {
@@ -238,6 +387,10 @@
     loadDevice();
   }
   async function renameDevice(entry: FileEntry) {
+    if (deviceBackend === "mtp") {
+      app.notify("Rename isn't supported in MTP mode yet", "info");
+      return;
+    }
     if (!app.selectedSerial) return;
     const next = prompt("Rename to:", entry.name);
     if (!next || next === entry.name) return;
@@ -251,6 +404,27 @@
     } catch (e) {
       app.notify(String(e), "error");
     }
+  }
+  // Open a device file (download to temp, then open with the default app).
+  async function openDeviceEntry(entry: FileEntry) {
+    if (deviceBackend === "mtp") {
+      const oid = mtpIds.get(entry.path);
+      if (oid == null) return;
+      app.notify(`Opening ${entry.name}…`);
+      const tmp = `/tmp/freedroid-open-${entry.name}`;
+      try {
+        await ipc.mtpPull(oid, tmp);
+        await ipc.openLocal(tmp);
+      } catch (e) {
+        app.notify(String(e), "error");
+      }
+      return;
+    }
+    if (!app.selectedSerial) return;
+    app.notify(`Opening ${entry.name}…`);
+    ipc
+      .openDeviceFile(app.selectedSerial, entry.path, entry.name)
+      .catch((e) => app.notify(String(e), "error"));
   }
 
   onMount(() => {
@@ -314,21 +488,23 @@
       <button
         class="xfer"
         title="Copy to device"
-        disabled={!app.ready || localSelected.size === 0}
+        disabled={!deviceReady || localSelected.size === 0}
         onclick={pushSelected}>→</button
       >
       <button
         class="xfer"
         title="Copy to Mac"
-        disabled={!app.ready || deviceSelected.size === 0}
+        disabled={!deviceReady || deviceSelected.size === 0}
         onclick={pullSelected}>←</button
       >
     </div>
 
     <Pane
-      title={app.selectedDevice
-        ? (app.selectedDevice.model ?? app.selectedDevice.serial).replace(/_/g, " ")
-        : "Android device"}
+      title={deviceBackend === "mtp"
+        ? mtpName || "Android (MTP)"
+        : app.selectedDevice
+          ? (app.selectedDevice.model ?? app.selectedDevice.serial).replace(/_/g, " ")
+          : "Android device"}
       icon="📱"
       path={devicePath}
       rootPath={deviceRoot}
@@ -336,20 +512,14 @@
       entries={deviceEntries}
       loading={deviceLoading}
       error={deviceError}
-      canWrite={app.ready}
+      canWrite={deviceReady}
       bind:selected={deviceSelected}
       onNavigate={navDevice}
       onRefresh={loadDevice}
       onNewFolder={newFolderDevice}
       onDelete={deleteDevice}
       onRename={renameDevice}
-      onOpen={(entry) => {
-        if (!app.selectedSerial) return;
-        app.notify(`Opening ${entry.name}…`);
-        ipc
-          .openDeviceFile(app.selectedSerial, entry.path, entry.name)
-          .catch((e) => app.notify(String(e), "error"));
-      }}
+      onOpen={openDeviceEntry}
       onDragOut={() => (dragSource = "device")}
       onDropIn={() => {
         if (dragSource === "local") pushSelected();
@@ -357,7 +527,21 @@
       }}
     >
       {#snippet headerExtra()}
-        {#if deviceVolumes.length > 1}
+        <div class="mode-toggle">
+          <button class:active={deviceBackend === "adb"} onclick={switchToAdb} title="USB debugging (ADB)">USB</button>
+          <button class:active={deviceBackend === "mtp"} onclick={connectMtp} title="MTP — no USB debugging needed">MTP</button>
+        </div>
+        {#if deviceBackend === "mtp" && mtpStorages.length > 1}
+          <select
+            class="vol-picker"
+            value={String(mtpStorageId)}
+            onchange={(e) => switchMtpStorage((e.currentTarget as HTMLSelectElement).value)}
+          >
+            {#each mtpStorages as s (s.id)}
+              <option value={String(s.id)}>{s.description}</option>
+            {/each}
+          </select>
+        {:else if deviceBackend === "adb" && deviceVolumes.length > 1}
           <select
             class="vol-picker"
             value={deviceRoot}
@@ -419,6 +603,25 @@
     border-radius: 6px;
     padding: 2px 6px;
     font-size: 11px;
+  }
+  :global(.mode-toggle) {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  :global(.mode-toggle button) {
+    border: none;
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    cursor: pointer;
+  }
+  :global(.mode-toggle button.active) {
+    background: var(--accent);
+    color: #fff;
   }
   .logo {
     font-size: 18px;

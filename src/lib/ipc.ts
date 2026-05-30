@@ -116,6 +116,44 @@ export const wifiDisconnect = (address: string) =>
 export const wifiPair = (address: string, code: string) =>
   invoke<string>("wifi_pair", { address, code });
 
+// ----- MTP (connect without USB debugging) -----
+
+export interface MtpStorage {
+  id: number;
+  description: string;
+  maxCapacity: number;
+  freeBytes: number;
+}
+
+export interface MtpDeviceInfo {
+  name: string;
+  storages: MtpStorage[];
+}
+
+export interface MtpEntry {
+  id: number;
+  name: string;
+  size: number;
+  mtime: number;
+  isDir: boolean;
+}
+
+export const mtpConnect = () => invoke<MtpDeviceInfo>("mtp_connect");
+export const mtpDisconnect = () => invoke<void>("mtp_disconnect");
+export const mtpList = (storage: number, parent: number) =>
+  invoke<MtpEntry[]>("mtp_list", { storage, parent });
+export const mtpPull = (id: number, local: string) =>
+  invoke<void>("mtp_pull", { id, local });
+export const mtpPush = (
+  local: string,
+  parent: number,
+  storage: number,
+  name: string,
+) => invoke<number>("mtp_push", { local, parent, storage, name });
+export const mtpMkdir = (name: string, parent: number, storage: number) =>
+  invoke<number>("mtp_mkdir", { name, parent, storage });
+export const mtpDelete = (id: number) => invoke<void>("mtp_delete", { id });
+
 export const onTransferProgress = (
   cb: (p: TransferProgress) => void,
 ): Promise<UnlistenFn> =>
