@@ -107,7 +107,11 @@ src-tauri/src/
 - [x] Sort / filter / shift-select; open files; local-side file ops
 - [x] SD card / storage volume switching
 - [ ] Code signing & notarization (config + CI ready; needs an Apple Developer ID)
-- [ ] MTP backend (connect without enabling USB debugging)
+- [~] MTP backend (connect without USB debugging) — native libmtp FFI behind the
+  `mtp` feature; detect / list storages / list folders / pull **verified against
+  a real device**. Remaining: push/mkdir/delete, a device-owning worker thread,
+  path↔object-id mapping, UI mode toggle, and bundling libmtp/libusb dylibs.
+  Try it: `cargo run --features mtp --example mtp_probe`.
 
 > Note: dragging files *in from Finder* isn't supported — macOS WebViews can't
 > expose dropped files' real paths to HTML5 drag-and-drop, and Tauri's native

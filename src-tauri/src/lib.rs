@@ -3,6 +3,9 @@ mod commands;
 mod error;
 mod local;
 
+#[cfg(feature = "mtp")]
+pub mod mtp;
+
 use tauri::{RunEvent, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
