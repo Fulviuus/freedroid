@@ -158,6 +158,11 @@ pub fn local_home() -> String {
     local::home_dir()
 }
 
+#[tauri::command]
+pub fn local_locations() -> Vec<local::Location> {
+    local::locations()
+}
+
 // ----- MTP (connect without USB debugging) -----
 
 #[tauri::command]

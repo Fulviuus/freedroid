@@ -55,3 +55,43 @@ pub fn list_dir(path: &str) -> Result<Vec<LocalEntry>> {
 pub fn home_dir() -> String {
     std::env::var("HOME").unwrap_or_else(|_| "/".to_string())
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Location {
+    pub label: String,
+    pub path: String,
+}
+
+/// Quick-access locations for the Mac pane: Home, the whole disk, and every
+/// mounted volume under /Volumes (USB drives, SD cards, disk images, shares).
+pub fn locations() -> Vec<Location> {
+    let mut out = vec![
+        Location {
+            label: "Home".into(),
+            path: home_dir(),
+        },
+        Location {
+            label: "Computer".into(),
+            path: "/".into(),
+        },
+    ];
+    if let Ok(rd) = std::fs::read_dir("/Volumes") {
+        let mut vols: Vec<Location> = rd
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    return None;
+                }
+                Some(Location {
+                    label: name.clone(),
+                    path: format!("/Volumes/{name}"),
+                })
+            })
+            .collect();
+        vols.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
+        out.extend(vols);
+    }
+    out
+}

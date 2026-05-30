@@ -95,6 +95,8 @@ export const listLocalDir = (path: string) =>
 
 export const localHome = () => invoke<string>("local_home");
 
+export const localLocations = () => invoke<Volume[]>("local_locations");
+
 export const localMakeDir = (path: string) =>
   invoke<void>("local_make_dir", { path });
 

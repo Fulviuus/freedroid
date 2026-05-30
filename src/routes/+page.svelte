@@ -25,11 +25,22 @@
 
   // ----- Local (Mac) pane state -----
   let localRoot = $state("/");
+  let localRootLabel = $state("Home");
+  let localLocations = $state<ipc.Volume[]>([]);
   let localPath = $state("/");
   let localEntries = $state<FileEntry[]>([]);
   let localLoading = $state(false);
   let localError = $state<string | null>(null);
   let localSelected = $state<Set<string>>(new Set());
+
+  function switchLocation(path: string) {
+    const loc = localLocations.find((l) => l.path === path);
+    if (!loc) return;
+    localRoot = loc.path;
+    localRootLabel = loc.label;
+    localSelected = new Set();
+    localPath = loc.path;
+  }
 
   // ----- Device (Android) pane state -----
   let deviceRoot = $state(DEVICE_ROOT);
@@ -418,6 +429,7 @@
       app.adbVersion = await ipc.adbVersion().catch(() => "");
       localRoot = await ipc.localHome().catch(() => "/");
       localPath = localRoot;
+      localLocations = await ipc.localLocations().catch(() => []);
       await app.refreshDevices();
     })();
 
@@ -452,6 +464,7 @@
       icon="💻"
       path={localPath}
       rootPath={localRoot}
+      rootLabel={localRootLabel}
       entries={localEntries}
       loading={localLoading}
       error={localError}
@@ -468,7 +481,21 @@
         if (dragSource === "device") pullSelected();
         dragSource = null;
       }}
-    />
+    >
+      {#snippet headerExtra()}
+        {#if localLocations.length > 1}
+          <select
+            class="vol-picker"
+            value={localRoot}
+            onchange={(e) => switchLocation((e.currentTarget as HTMLSelectElement).value)}
+          >
+            {#each localLocations as l (l.path)}
+              <option value={l.path}>{l.label}</option>
+            {/each}
+          </select>
+        {/if}
+      {/snippet}
+    </Pane>
 
     <div class="transfer-col">
       <button

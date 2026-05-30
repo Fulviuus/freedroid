@@ -34,6 +34,7 @@ pub fn run() {
             commands::local_rename,
             commands::local_trash,
             commands::local_home,
+            commands::local_locations,
             commands::wifi_enable_tcpip,
             commands::wifi_connect,
             commands::wifi_disconnect,
