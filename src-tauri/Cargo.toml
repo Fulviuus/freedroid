@@ -1,6 +1,6 @@
 [package]
 name = "freedroid"
-version = "0.1.0"
+version = "0.2.0"
 description = "Free & open-source Android file transfer for macOS"
 authors = ["Freedroid contributors"]
 license = "MIT"
