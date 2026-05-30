@@ -123,14 +123,36 @@ pub async fn make_dir(app: &AppHandle, serial: &str, path: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn remove(app: &AppHandle, serial: &str, path: &str) -> Result<()> {
+/// Validate a path is safe to delete: inside device storage and not a root.
+fn check_deletable(path: &str) -> Result<()> {
     validate_device_path(path)?;
-    // Extra guard: never allow removing a storage root itself.
     if path == "/sdcard" || path == "/storage" || path.trim_end_matches('/').matches('/').count() < 2
     {
-        return Err(Error::InvalidPath("refusing to delete a storage root".into()));
+        return Err(Error::InvalidPath(format!(
+            "refusing to delete a storage root: {path}"
+        )));
     }
+    Ok(())
+}
+
+pub async fn remove(app: &AppHandle, serial: &str, path: &str) -> Result<()> {
+    check_deletable(path)?;
     let cmd = format!("rm -rf {}", shell_quote(path));
+    run_on(app, serial, &["shell", &cmd]).await?;
+    Ok(())
+}
+
+/// Delete many paths in a single `rm -rf` so large selections are one round-trip.
+pub async fn remove_many(app: &AppHandle, serial: &str, paths: &[String]) -> Result<()> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+    let mut quoted = Vec::with_capacity(paths.len());
+    for p in paths {
+        check_deletable(p)?;
+        quoted.push(shell_quote(p));
+    }
+    let cmd = format!("rm -rf {}", quoted.join(" "));
     run_on(app, serial, &["shell", &cmd]).await?;
     Ok(())
 }

@@ -20,6 +20,7 @@ pub fn run() {
             commands::list_volumes,
             commands::device_make_dir,
             commands::device_remove,
+            commands::device_remove_many,
             commands::device_rename,
             commands::pull_file,
             commands::push_file,

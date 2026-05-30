@@ -37,6 +37,15 @@ pub async fn device_remove(app: AppHandle, serial: String, path: String) -> Resu
 }
 
 #[tauri::command]
+pub async fn device_remove_many(
+    app: AppHandle,
+    serial: String,
+    paths: Vec<String>,
+) -> Result<()> {
+    adb::files::remove_many(&app, &serial, &paths).await
+}
+
+#[tauri::command]
 pub async fn device_rename(app: AppHandle, serial: String, from: String, to: String) -> Result<()> {
     adb::files::rename(&app, &serial, &from, &to).await
 }

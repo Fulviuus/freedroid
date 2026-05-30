@@ -56,6 +56,9 @@ export const deviceMakeDir = (serial: string, path: string) =>
 export const deviceRemove = (serial: string, path: string) =>
   invoke<void>("device_remove", { serial, path });
 
+export const deviceRemoveMany = (serial: string, paths: string[]) =>
+  invoke<void>("device_remove_many", { serial, paths });
+
 export const deviceRename = (serial: string, from: string, to: string) =>
   invoke<void>("device_rename", { serial, from, to });
 

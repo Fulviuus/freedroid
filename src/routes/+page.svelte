@@ -186,9 +186,12 @@
   }
   async function deleteLocal() {
     if (localSelected.size === 0) return;
-    if (!confirm(`Move ${localSelected.size} item(s) to the Trash?`)) return;
+    const n = localSelected.size;
+    if (!confirm(`Move ${n} item(s) to the Trash?`)) return;
+    app.notify(`Moving ${n} item${n === 1 ? "" : "s"} to Trash…`);
     try {
       await ipc.localTrash([...localSelected]);
+      app.notify(`Moved ${n} item${n === 1 ? "" : "s"} to Trash`);
       localSelected = new Set();
       loadLocal();
     } catch (e) {
@@ -220,20 +223,18 @@
   }
   async function deleteDevice() {
     if (!app.selectedSerial || deviceSelected.size === 0) return;
-    if (
-      !confirm(
-        `Delete ${deviceSelected.size} item(s) from the device? This cannot be undone.`,
-      )
-    )
+    const n = deviceSelected.size;
+    if (!confirm(`Delete ${n} item(s) from the device? This cannot be undone.`))
       return;
-    for (const path of deviceSelected) {
-      try {
-        await ipc.deviceRemove(app.selectedSerial, path);
-      } catch (e) {
-        app.notify(String(e), "error");
-      }
+    const paths = [...deviceSelected];
+    app.notify(`Deleting ${n} item${n === 1 ? "" : "s"}…`);
+    try {
+      await ipc.deviceRemoveMany(app.selectedSerial, paths);
+      app.notify(`Deleted ${n} item${n === 1 ? "" : "s"}`);
+      deviceSelected = new Set();
+    } catch (e) {
+      app.notify(String(e), "error");
     }
-    deviceSelected = new Set();
     loadDevice();
   }
   async function renameDevice(entry: FileEntry) {
